@@ -169,7 +169,7 @@ const navigation: NavigationEntry[] = [
     title: "Activity Logs",
     description:
       "Review security and administrative activity.",
-    href: "/admin/logs",
+    href: "/admin/activity-logs",
     keywords: [
       "logs",
       "activity",
@@ -470,11 +470,31 @@ export default function Topbar({
   }
 
   useEffect(() => {
-    closeAll();
+    const frame =
+      window.requestAnimationFrame(
+        () => {
+          setSearchOpen(
+            false,
+          );
 
-    setSearchQuery(
-      "",
-    );
+          setNotificationsOpen(
+            false,
+          );
+
+          setAccountOpen(
+            false,
+          );
+
+          setSearchQuery(
+            "",
+          );
+        },
+      );
+
+    return () =>
+      window.cancelAnimationFrame(
+        frame,
+      );
   }, [
     pathname,
   ]);
@@ -1400,7 +1420,7 @@ export default function Topbar({
                         text-slate-600
                       "
                     >
-                      You're all
+                      You&apos;re all
                       caught up
                     </p>
 
@@ -1656,7 +1676,7 @@ export default function Topbar({
                   "
                 >
                   <Link
-                    href="/admin/logs"
+                    href="/admin/activity-logs"
                     onClick={() =>
                       setAccountOpen(
                         false,

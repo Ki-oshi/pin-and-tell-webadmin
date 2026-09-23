@@ -99,7 +99,7 @@ const navigation: NavigationGroup[] = [
     items: [
       {
         label: "Activity Logs",
-        href: "/admin/logs",
+        href: "/admin/activity-logs",
         icon: ScrollText,
       },
       {

@@ -15,13 +15,11 @@ import {
   Eye,
   Heart,
   ImageIcon,
-  Map,
   MapPin,
   MessageCircle,
   Navigation,
   Search,
   ShieldCheck,
-  User,
   X,
 } from "lucide-react";
 
@@ -249,9 +247,19 @@ export default function PinsTable({
     >(null);
 
   useEffect(() => {
-    setQuery(
-      initialQuery,
-    );
+    const frame =
+      window.requestAnimationFrame(
+        () => {
+          setQuery(
+            initialQuery,
+          );
+        },
+      );
+
+    return () =>
+      window.cancelAnimationFrame(
+        frame,
+      );
   }, [
     initialQuery,
   ]);

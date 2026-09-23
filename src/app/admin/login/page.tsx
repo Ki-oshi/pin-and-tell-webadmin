@@ -23,8 +23,6 @@ import LoginForm from "./login-form";
 
 export const metadata:
   Metadata = {
-    title:
-      "Admin Login | PIN & TELL",
 
     description:
       "Secure administrator access for the PIN & TELL management system.",

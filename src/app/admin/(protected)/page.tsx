@@ -1220,7 +1220,7 @@ export default async function AdminDashboardPage() {
             </div>
 
             <Link
-              href="/admin/logs"
+              href="/admin/activity-logs"
               className="
                 flex
                 items-center

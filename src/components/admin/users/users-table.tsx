@@ -205,12 +205,29 @@ export default function UsersTable({
     );
 
   const [
-    selectedUser,
-    setSelectedUser,
+    selectedUserId,
+    setSelectedUserId,
   ] =
     useState<
-      AdminUserRow | null
+      string | null
     >(null);
+
+  const selectedUser =
+    useMemo(
+      () =>
+        selectedUserId ===
+        null
+          ? null
+          : users.find(
+              (user) =>
+                user.id ===
+                selectedUserId,
+            ) ?? null,
+      [
+        users,
+        selectedUserId,
+      ],
+    );
 
   const [
     copied,
@@ -239,9 +256,19 @@ export default function UsersTable({
     useTransition();
 
   useEffect(() => {
-    setQuery(
-      initialQuery,
-    );
+    const frame =
+      window.requestAnimationFrame(
+        () => {
+          setQuery(
+            initialQuery,
+          );
+        },
+      );
+
+    return () =>
+      window.cancelAnimationFrame(
+        frame,
+      );
   }, [
     initialQuery,
   ]);
@@ -309,30 +336,6 @@ export default function UsersTable({
       return;
     }
 
-    const exists =
-      users.some(
-        (user) =>
-          user.id ===
-          selectedUser.id,
-      );
-
-    if (!exists) {
-      setSelectedUser(
-        null,
-      );
-    }
-  }, [
-    users,
-    selectedUser,
-  ]);
-
-  useEffect(() => {
-    if (
-      !selectedUser
-    ) {
-      return;
-    }
-
     const previous =
       document.body
         .style
@@ -349,7 +352,7 @@ export default function UsersTable({
         event.key ===
         "Escape"
       ) {
-        setSelectedUser(
+        setSelectedUserId(
           null,
         );
       }
@@ -539,16 +542,6 @@ export default function UsersTable({
 
           return;
         }
-
-        setSelectedUser(
-          (current) =>
-            current
-              ? {
-                  ...current,
-                  status,
-                }
-              : null,
-        );
 
         setActionMessage(
           {
@@ -1013,8 +1006,8 @@ export default function UsersTable({
                         <button
                           type="button"
                           onClick={() => {
-                            setSelectedUser(
-                              user,
+                            setSelectedUserId(
+                              user.id,
                             );
 
                             setActionMessage(
@@ -1232,7 +1225,7 @@ export default function UsersTable({
             type="button"
             aria-label="Close user details"
             onClick={() =>
-              setSelectedUser(
+              setSelectedUserId(
                 null,
               )
             }
@@ -1300,7 +1293,7 @@ export default function UsersTable({
               <button
                 type="button"
                 onClick={() =>
-                  setSelectedUser(
+                  setSelectedUserId(
                     null,
                   )
                 }

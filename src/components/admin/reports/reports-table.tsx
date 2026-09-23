@@ -11,6 +11,7 @@ import {
 
 import {
   AlertTriangle,
+  Ban,
   CheckCircle2,
   CircleDot,
   Download,
@@ -37,6 +38,8 @@ import ActionConfirmModal, {
   type ConfirmationVariant,
 } from "@/components/admin/action-confirm-modal";
 
+import CreateBanModal from "@/components/admin/bans/create-ban-modal";
+
 import {
   updateReportStatusAction,
 } from "@/app/admin/(protected)/reports/actions";
@@ -47,8 +50,7 @@ import type {
 } from "@/lib/admin/reports";
 
 type ReportsTableProps = {
-  reports:
-    AdminReportRow[];
+  reports: AdminReportRow[];
 
   pagination: {
     page: number;
@@ -57,17 +59,10 @@ type ReportsTableProps = {
     pageCount: number;
   };
 
-  initialQuery:
-    string;
-
-  initialStatus:
-    string;
-
-  initialType:
-    string;
-
-  initialPin:
-    string;
+  initialQuery: string;
+  initialStatus: string;
+  initialType: string;
+  initialPin: string;
 };
 
 type ReportModerationAction =
@@ -76,19 +71,15 @@ type ReportModerationAction =
   | "dismissed";
 
 type PendingReportAction = {
-  status:
-    ReportModerationAction;
+  status: ReportModerationAction;
 
   title: string;
 
-  description:
-    string;
+  description: string;
 
-  confirmLabel:
-    string;
+  confirmLabel: string;
 
-  variant:
-    ConfirmationVariant;
+  variant: ConfirmationVariant;
 };
 
 function formatLabel(
@@ -133,21 +124,11 @@ function formatDateTime(
   return new Intl.DateTimeFormat(
     "en-PH",
     {
-      month:
-        "short",
-
-      day:
-        "numeric",
-
-      year:
-        "numeric",
-
-      hour:
-        "numeric",
-
-      minute:
-        "2-digit",
-
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
       timeZone:
         "Asia/Manila",
     },
@@ -179,15 +160,9 @@ function formatDate(
   return new Intl.DateTimeFormat(
     "en-PH",
     {
-      month:
-        "short",
-
-      day:
-        "numeric",
-
-      year:
-        "numeric",
-
+      month: "short",
+      day: "numeric",
+      year: "numeric",
       timeZone:
         "Asia/Manila",
     },
@@ -223,8 +198,7 @@ function reportTargetLabel(
     "pin"
   ) {
     return (
-      report.target
-        .title ||
+      report.target.title ||
       `Pin #${report.target.id}`
     );
   }
@@ -258,8 +232,7 @@ function reportTargetLabel(
 function StatusBadge({
   status,
 }: {
-  status:
-    ReportStatus;
+  status: ReportStatus;
 }) {
   const styles:
     Record<
@@ -393,17 +366,35 @@ export default function ReportsTable({
   const [
     query,
     setQuery,
-  ] = useState(
-    initialQuery,
-  );
+  ] =
+    useState(
+      initialQuery,
+    );
 
   const [
-    selectedReport,
-    setSelectedReport,
+    selectedReportId,
+    setSelectedReportId,
   ] =
     useState<
-      AdminReportRow | null
+      number | null
     >(null);
+
+  const selectedReport =
+    useMemo(
+      () =>
+        selectedReportId ===
+        null
+          ? null
+          : reports.find(
+              (report) =>
+                report.id ===
+                selectedReportId,
+            ) ?? null,
+      [
+        reports,
+        selectedReportId,
+      ],
+    );
 
   const [
     pendingAction,
@@ -422,8 +413,30 @@ export default function ReportsTable({
         | "success"
         | "error";
 
-      text:
-        string;
+      text: string;
+    } | null>(
+      null,
+    );
+
+  /*
+   * Create Ban modal state.
+   */
+  const [
+    banModalOpen,
+    setBanModalOpen,
+  ] =
+    useState(false);
+
+  const [
+    banMessage,
+    setBanMessage,
+  ] =
+    useState<{
+      type:
+        | "success"
+        | "error";
+
+      text: string;
     } | null>(
       null,
     );
@@ -435,46 +448,26 @@ export default function ReportsTable({
     useTransition();
 
   useEffect(() => {
-    setQuery(
-      initialQuery,
-    );
+    const frame =
+      window.requestAnimationFrame(
+        () => {
+          setQuery(
+            initialQuery,
+          );
+        },
+      );
+
+    return () =>
+      window.cancelAnimationFrame(
+        frame,
+      );
   }, [
     initialQuery,
   ]);
 
   /*
-   * Keep an opened drawer synchronized
-   * after router.refresh() returns
-   * updated server data.
+   * Debounced report search.
    */
-  useEffect(() => {
-    if (
-      !selectedReport
-    ) {
-      return;
-    }
-
-    const updatedReport =
-      reports.find(
-        (report) =>
-          report.id ===
-          selectedReport.id,
-      );
-
-    if (
-      updatedReport &&
-      updatedReport !==
-        selectedReport
-    ) {
-      setSelectedReport(
-        updatedReport,
-      );
-    }
-  }, [
-    reports,
-    selectedReport,
-  ]);
-
   useEffect(() => {
     const timeout =
       window.setTimeout(
@@ -487,9 +480,7 @@ export default function ReportsTable({
           const cleaned =
             query.trim();
 
-          if (
-            cleaned
-          ) {
+          if (cleaned) {
             params.set(
               "q",
               cleaned,
@@ -531,6 +522,13 @@ export default function ReportsTable({
     router,
   ]);
 
+  /*
+   * Lock body scrolling while
+   * the report drawer is open.
+   *
+   * Escape closes the drawer only
+   * if another modal is not open.
+   */
   useEffect(() => {
     if (
       !selectedReport
@@ -539,8 +537,7 @@ export default function ReportsTable({
     }
 
     const previous =
-      document.body
-        .style
+      document.body.style
         .overflow;
 
     document.body.style
@@ -551,12 +548,10 @@ export default function ReportsTable({
       event:
         KeyboardEvent,
     ) {
-      /*
-       * The confirmation modal owns
-       * Escape while it is open.
-       */
       if (
-        pendingAction
+        pendingAction ||
+        banModalOpen ||
+        isPending
       ) {
         return;
       }
@@ -565,7 +560,7 @@ export default function ReportsTable({
         event.key ===
         "Escape"
       ) {
-        setSelectedReport(
+        setSelectedReportId(
           null,
         );
       }
@@ -589,6 +584,8 @@ export default function ReportsTable({
   }, [
     selectedReport,
     pendingAction,
+    banModalOpen,
+    isPending,
   ]);
 
   const showingText =
@@ -829,10 +826,6 @@ export default function ReportsTable({
       return;
     }
 
-    /*
-     * Only an active moderation
-     * case may change state.
-     */
     if (
       selectedReport.status !==
         "pending" &&
@@ -840,8 +833,7 @@ export default function ReportsTable({
         "reviewing"
     ) {
       setActionMessage({
-        type:
-          "error",
+        type: "error",
 
         text:
           "This report has already been closed and cannot be changed from this screen.",
@@ -964,24 +956,6 @@ export default function ReportsTable({
           return;
         }
 
-        setSelectedReport(
-          (
-            current,
-          ) =>
-            current
-              ? {
-                  ...current,
-
-                  status:
-                    action.status,
-
-                  reviewed_at:
-                    new Date()
-                      .toISOString(),
-                }
-              : null,
-        );
-
         setPendingAction(
           null,
         );
@@ -996,6 +970,31 @@ export default function ReportsTable({
 
         router.refresh();
       },
+    );
+  }
+
+  function openBanModal() {
+    if (
+      !selectedReport
+        ?.reported_user_id
+    ) {
+      setBanMessage({
+        type:
+          "error",
+
+        text:
+          "This report does not identify a reported user that can be banned.",
+      });
+
+      return;
+    }
+
+    setBanMessage(
+      null,
+    );
+
+    setBanModalOpen(
+      true,
     );
   }
 
@@ -1016,6 +1015,9 @@ export default function ReportsTable({
 
   return (
     <>
+      {/* ==========================
+          REPORTS TABLE
+      ========================== */}
       <section
         className="
           border
@@ -1281,7 +1283,7 @@ export default function ReportsTable({
           </div>
         </div>
 
-        {/* Pin filter */}
+        {/* Pin-specific filter */}
         {initialPin && (
           <div
             className="
@@ -1473,7 +1475,8 @@ export default function ReportsTable({
                               "
                             >
                               {
-                                report.target.type
+                                report.target
+                                  .type
                               }
                             </p>
                           </div>
@@ -1509,8 +1512,7 @@ export default function ReportsTable({
                         >
                           <TargetIcon
                             type={
-                              report
-                                .target
+                              report.target
                                 .type
                             }
                           />
@@ -1642,11 +1644,15 @@ export default function ReportsTable({
                         <button
                           type="button"
                           onClick={() => {
-                            setSelectedReport(
-                              report,
+                            setSelectedReportId(
+                              report.id,
                             );
 
                             setActionMessage(
+                              null,
+                            );
+
+                            setBanMessage(
                               null,
                             );
 
@@ -1855,7 +1861,9 @@ export default function ReportsTable({
         </div>
       </section>
 
-      {/* Review drawer */}
+      {/* ==========================
+          REPORT REVIEW DRAWER
+      ========================== */}
       {selectedReport && (
         <>
           <button
@@ -1864,9 +1872,10 @@ export default function ReportsTable({
             onClick={() => {
               if (
                 !pendingAction &&
+                !banModalOpen &&
                 !isPending
               ) {
-                setSelectedReport(
+                setSelectedReportId(
                   null,
                 );
               }
@@ -1956,10 +1965,11 @@ export default function ReportsTable({
                   Boolean(
                     pendingAction,
                   ) ||
+                  banModalOpen ||
                   isPending
                 }
                 onClick={() =>
-                  setSelectedReport(
+                  setSelectedReportId(
                     null,
                   )
                 }
@@ -1991,7 +2001,7 @@ export default function ReportsTable({
                 overflow-y-auto
               "
             >
-              {/* Report info */}
+              {/* Report information */}
               <div
                 className="
                   border-b
@@ -2126,7 +2136,7 @@ export default function ReportsTable({
                 </div>
               </div>
 
-              {/* Target */}
+              {/* Reported content */}
               <div
                 className="
                   border-b
@@ -2270,7 +2280,9 @@ export default function ReportsTable({
                 </div>
               </div>
 
-              {/* People */}
+              {/* ==========================
+                  PEOPLE INVOLVED
+              ========================== */}
               <div
                 className="
                   border-b
@@ -2299,6 +2311,7 @@ export default function ReportsTable({
                     sm:grid-cols-2
                   "
                 >
+                  {/* Reporter */}
                   <div
                     className="
                       border
@@ -2344,6 +2357,7 @@ export default function ReportsTable({
                           text-[10px]
                           font-semibold
                           text-[#A92F56]
+                          hover:text-[#72213A]
                         "
                       >
                         View user
@@ -2351,6 +2365,7 @@ export default function ReportsTable({
                     )}
                   </div>
 
+                  {/* Reported user */}
                   <div
                     className="
                       border
@@ -2383,8 +2398,30 @@ export default function ReportsTable({
                         ? personName(
                             selectedReport.reported_user,
                           )
-                        : "Not specified"}
+                        : selectedReport.reported_user_id
+                          ? "User account"
+                          : "Not specified"}
                     </p>
+
+                    {selectedReport
+                      .reported_user
+                      ?.username && (
+                      <p
+                        className="
+                          mt-0.5
+                          truncate
+                          text-[9px]
+                          text-slate-400
+                        "
+                      >
+                        @
+                        {
+                          selectedReport
+                            .reported_user
+                            .username
+                        }
+                      </p>
+                    )}
 
                     {selectedReport
                       .reported_user_id && (
@@ -2398,10 +2435,46 @@ export default function ReportsTable({
                           text-[10px]
                           font-semibold
                           text-[#A92F56]
+                          hover:text-[#72213A]
                         "
                       >
                         View user
                       </Link>
+                    )}
+
+                    {/* Ban action */}
+                    {selectedReport
+                      .reported_user_id && (
+                      <button
+                        type="button"
+                        onClick={
+                          openBanModal
+                        }
+                        className="
+                          mt-3
+                          flex
+                          h-9
+                          w-full
+                          items-center
+                          justify-center
+                          gap-2
+                          border
+                          border-red-200
+                          bg-red-50
+                          px-3
+                          text-[10px]
+                          font-semibold
+                          text-red-700
+                          transition
+                          hover:bg-red-100
+                        "
+                      >
+                        <Ban
+                          size={13}
+                        />
+
+                        Ban Reported User
+                      </button>
                     )}
                   </div>
                 </div>
@@ -2538,7 +2611,9 @@ export default function ReportsTable({
                 </div>
               </div>
 
-              {/* Actions */}
+              {/* ==========================
+                  MODERATION ACTIONS
+              ========================== */}
               <div
                 className="
                   px-5
@@ -2572,6 +2647,7 @@ export default function ReportsTable({
                   and reported content.
                 </p>
 
+                {/* Report action message */}
                 {actionMessage && (
                   <div
                     className={`
@@ -2590,6 +2666,29 @@ export default function ReportsTable({
                   >
                     {
                       actionMessage.text
+                    }
+                  </div>
+                )}
+
+                {/* Ban action message */}
+                {banMessage && (
+                  <div
+                    className={`
+                      mt-4
+                      border
+                      px-3
+                      py-2.5
+                      text-xs
+                      ${
+                        banMessage.type ===
+                        "success"
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                          : "border-red-200 bg-red-50 text-red-700"
+                      }
+                    `}
+                  >
+                    {
+                      banMessage.text
                     }
                   </div>
                 )}
@@ -2779,15 +2878,14 @@ export default function ReportsTable({
                       text-amber-700
                     "
                   >
-                    Account suspension,
-                    bans and destructive
-                    content removal are
-                    handled through
-                    their dedicated
-                    moderation controls
-                    so enforcement
-                    records remain
-                    consistent.
+                    Bans are recorded
+                    separately from
+                    report workflow
+                    status so the
+                    moderation case and
+                    enforcement history
+                    remain independently
+                    auditable.
                   </p>
                 </div>
               </div>
@@ -2796,7 +2894,9 @@ export default function ReportsTable({
         </>
       )}
 
-      {/* Custom confirmation modal */}
+      {/* ==========================
+          REPORT ACTION MODAL
+      ========================== */}
       <ActionConfirmModal
         open={
           pendingAction !==
@@ -2837,6 +2937,71 @@ export default function ReportsTable({
         onConfirm={
           confirmReportAction
         }
+      />
+
+      {/* ==========================
+          CREATE BAN MODAL
+      ========================== */}
+      <CreateBanModal
+        open={
+          banModalOpen
+        }
+        initialUser={
+          selectedReport
+            ?.reported_user_id
+            ? {
+                id:
+                  selectedReport
+                    .reported_user_id,
+
+                username:
+                  selectedReport
+                    .reported_user
+                    ?.username ??
+                  null,
+
+                full_name:
+                  selectedReport
+                    .reported_user
+                    ?.full_name ??
+                  null,
+
+                status:
+                  selectedReport
+                    .reported_user
+                    ?.status ??
+                  null,
+              }
+            : null
+        }
+        sourceReportId={
+          selectedReport
+            ?.id ??
+          null
+        }
+        onClose={() => {
+          setBanModalOpen(
+            false,
+          );
+        }}
+        onSuccess={(
+          message,
+        ) => {
+          setBanModalOpen(
+            false,
+          );
+
+          setBanMessage({
+            type:
+              "success",
+
+            text:
+              message ||
+              "User banned successfully.",
+          });
+
+          router.refresh();
+        }}
       />
     </>
   );
