@@ -2,6 +2,8 @@ import type {
   Metadata,
 } from "next";
 
+import Image from "next/image";
+
 import {
   redirect,
 } from "next/navigation";
@@ -35,36 +37,48 @@ export const metadata:
 export const dynamic =
   "force-dynamic";
 
-function LogoPlaceholder() {
+function PinTellLogo({
+  variant = "dark",
+  size = 56,
+}: {
+  variant?: "dark" | "light";
+  size?: number;
+}) {
   return (
     <div
-      className="
+      className={`
         flex
-        h-14
-        w-14
         shrink-0
         items-center
         justify-center
+        overflow-hidden
         rounded-2xl
         border
-        border-white/20
-        bg-white/10
         shadow-sm
-        backdrop-blur
-      "
-      aria-label="PIN&TELL logo placeholder"
+        ${
+          variant === "light"
+            ? "border-white/20 bg-white/10"
+            : "border-slate-200 bg-white"
+        }
+      `}
+      style={{
+        width: size,
+        height: size,
+      }}
     >
-      <span
+      <Image
+        src="/images/pin-tell-logo.png"
+        alt="PIN&TELL logo"
+        width={size}
+        height={size}
+        priority
         className="
-          text-[10px]
-          font-bold
-          uppercase
-          tracking-[0.16em]
-          text-white
+          h-full
+          w-full
+          object-contain
+          p-1.5
         "
-      >
-        Logo
-      </span>
+      />
     </div>
   );
 }
@@ -200,7 +214,10 @@ export default async function AdminLoginPage() {
                 gap-4
               "
             >
-              <LogoPlaceholder />
+             <PinTellLogo
+                variant="light"
+                size={56}
+              />
 
               <div>
                 <p
@@ -419,24 +436,10 @@ export default async function AdminLoginPage() {
                 lg:hidden
               "
             >
-              <div
-                className="
-                  flex
-                  h-12
-                  w-12
-                  items-center
-                  justify-center
-                  rounded-xl
-                  bg-[#72213A]
-                  text-[9px]
-                  font-bold
-                  uppercase
-                  tracking-widest
-                  text-white
-                "
-              >
-                Logo
-              </div>
+              <PinTellLogo
+                variant="dark"
+                size={48}
+              />
 
               <div>
                 <p
@@ -497,7 +500,7 @@ export default async function AdminLoginPage() {
               >
                 Sign in with
                 your authorized
-                PIN&TELL
+                PIN & TELL
                 administrator
                 account.
               </p>
