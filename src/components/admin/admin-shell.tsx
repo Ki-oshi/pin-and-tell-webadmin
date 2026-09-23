@@ -4,6 +4,12 @@ import {
   useState,
 } from "react";
 
+import NextTopLoader from "nextjs-toploader";
+
+import type {
+  AdminTopbarData,
+} from "@/lib/admin/topbar";
+
 import Sidebar from "./sidebar";
 import Topbar from "./topbar";
 
@@ -16,11 +22,17 @@ type AdminInfo = {
 
 type AdminShellProps = {
   admin: AdminInfo;
-  children: React.ReactNode;
+
+  topbarData:
+    AdminTopbarData;
+
+  children:
+    React.ReactNode;
 };
 
 export default function AdminShell({
   admin,
+  topbarData,
   children,
 }: AdminShellProps) {
   const [
@@ -36,6 +48,20 @@ export default function AdminShell({
         text-slate-900
       "
     >
+      <NextTopLoader
+        color="#CC3A67"
+        initialPosition={0.08}
+        crawl
+        crawlSpeed={180}
+        height={2}
+        speed={220}
+        easing="ease"
+        showSpinner={false}
+        shadow={false}
+        zIndex={9999}
+        showAtBottom={false}
+      />
+
       <Sidebar
         open={
           sidebarOpen
@@ -57,6 +83,9 @@ export default function AdminShell({
           admin={
             admin
           }
+          topbarData={
+            topbarData
+          }
           onMenuClick={() =>
             setSidebarOpen(
               true,
@@ -66,7 +95,7 @@ export default function AdminShell({
 
         <main
           className="
-            min-h-[calc(100vh-72px)]
+            min-h-[calc(100vh-68px)]
             px-4
             py-6
             sm:px-6

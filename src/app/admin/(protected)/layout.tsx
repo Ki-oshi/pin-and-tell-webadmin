@@ -6,6 +6,10 @@ import {
   requireAdmin,
 } from "@/lib/auth/session";
 
+import {
+  getAdminTopbarData,
+} from "@/lib/admin/topbar";
+
 import AdminShell from "@/components/admin/admin-shell";
 
 type ProtectedAdminLayoutProps = {
@@ -18,21 +22,18 @@ export default async function ProtectedAdminLayout({
   const admin =
     await requireAdmin();
 
+  const topbarData =
+    await getAdminTopbarData();
+
   return (
     <AdminShell
       admin={{
-        id:
-          admin.id,
-
-        email:
-          admin.email,
-
-        full_name:
-          admin.full_name,
-
-        role:
-          admin.role,
+        id: admin.id,
+        email: admin.email,
+        full_name: admin.full_name,
+        role: admin.role,
       }}
+      topbarData={topbarData}
     >
       {children}
     </AdminShell>

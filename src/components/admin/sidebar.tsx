@@ -206,7 +206,7 @@ export default function Sidebar({
             >
               <Image
                 src="/images/pin-tell-logo.png"
-                alt="PIN&TELL"
+                alt="PIN & TELL"
                 width={40}
                 height={40}
                 priority
@@ -229,7 +229,7 @@ export default function Sidebar({
                   text-slate-950
                 "
               >
-                PIN&TELL
+                PIN & TELL
               </p>
 
               <p
@@ -391,7 +391,7 @@ export default function Sidebar({
               text-slate-400
             "
           >
-            PIN&TELL Web Administration
+            PIN & TELL Web Administration
           </p>
         </div>
       </aside>
