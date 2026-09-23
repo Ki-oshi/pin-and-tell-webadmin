@@ -13,7 +13,13 @@ import {
   getReportsPageData,
 } from "@/lib/admin/reports";
 
+import {
+  getContentViolationsData,
+} from "@/lib/admin/content-violations";
+
 import ReportsTable from "@/components/admin/reports/reports-table";
+
+import ContentViolationsTable from "@/components/admin/reports/content-violations-table";
 
 export const metadata:
   Metadata = {
@@ -50,6 +56,10 @@ type ReportsPageProps = {
   }>;
 };
 
+/* =========================================================
+   HELPERS
+========================================================= */
+
 function firstValue(
   value:
     | string
@@ -76,21 +86,32 @@ function formatNumber(
     | null,
 ) {
   if (
-    value === null
+    value ===
+    null
   ) {
     return "—";
   }
 
   return new Intl.NumberFormat(
     "en-US",
-  ).format(value);
+  ).format(
+    value,
+  );
 }
+
+/* =========================================================
+   PAGE
+========================================================= */
 
 export default async function ReportsPage({
   searchParams,
 }: ReportsPageProps) {
   const params =
     await searchParams;
+
+  /* =======================================================
+     QUERY PARAMETERS
+  ======================================================= */
 
   const query =
     firstValue(
@@ -124,35 +145,56 @@ export default async function ReportsPage({
     Number.parseInt(
       firstValue(
         params.page,
-      ) || "1",
+      ) ||
+        "1",
       10,
     );
 
-  const data =
-    await getReportsPageData(
-      {
-        page:
-          Number.isFinite(
-            parsedPage,
-          )
-            ? parsedPage
-            : 1,
+  /* =======================================================
+     PAGE DATA
+  ======================================================= */
 
-        search:
-          query,
+  /*
+   * Reports and automated content
+   * violations are independent data
+   * sources, so load them concurrently.
+   */
+  const [
+    data,
+    contentViolations,
+  ] =
+    await Promise.all([
+      getReportsPageData(
+        {
+          page:
+            Number.isFinite(
+              parsedPage,
+            )
+              ? parsedPage
+              : 1,
 
-        status,
+          search:
+            query,
 
-        type,
+          status,
 
-        pinId:
-          Number.isFinite(
-            parsedPin,
-          )
-            ? parsedPin
-            : null,
-      },
-    );
+          type,
+
+          pinId:
+            Number.isFinite(
+              parsedPin,
+            )
+              ? parsedPin
+              : null,
+        },
+      ),
+
+      getContentViolationsData(),
+    ]);
+
+  /* =======================================================
+     REPORT SUMMARY CARDS
+  ======================================================= */
 
   const stats = [
     {
@@ -228,12 +270,20 @@ export default async function ReportsPage({
     },
   ];
 
+  /* =======================================================
+     RENDER
+  ======================================================= */
+
   return (
     <div
       className="
         space-y-5
       "
     >
+      {/* ===================================================
+          REPORT LOAD WARNING
+      =================================================== */}
+
       {data.hasErrors && (
         <div
           className="
@@ -254,6 +304,10 @@ export default async function ReportsPage({
         </div>
       )}
 
+      {/* ===================================================
+          REPORT STATISTICS
+      =================================================== */}
+
       <section
         className="
           grid
@@ -263,7 +317,9 @@ export default async function ReportsPage({
         "
       >
         {stats.map(
-          (stat) => {
+          (
+            stat,
+          ) => {
             const Icon =
               stat.icon;
 
@@ -352,6 +408,10 @@ export default async function ReportsPage({
         )}
       </section>
 
+      {/* ===================================================
+          USER-SUBMITTED REPORTS
+      =================================================== */}
+
       <ReportsTable
         reports={
           data.reports
@@ -398,6 +458,25 @@ export default async function ReportsPage({
                 parsedPin,
               )
             : ""
+        }
+      />
+
+      {/* ===================================================
+          AUTOMATED CONTENT VIOLATIONS
+      =================================================== */}
+
+      <ContentViolationsTable
+        rows={
+          contentViolations.rows
+        }
+        stats={
+          contentViolations.stats
+        }
+        activeWindowDays={
+          contentViolations.activeWindowDays
+        }
+        hasErrors={
+          contentViolations.hasErrors
         }
       />
     </div>

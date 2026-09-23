@@ -12,6 +12,7 @@ import {
 import {
   AlertTriangle,
   Ban,
+  Bot,
   CheckCircle2,
   CircleDot,
   Download,
@@ -21,7 +22,9 @@ import {
   MessageCircle,
   MessagesSquare,
   Search,
+  ShieldCheck,
   User,
+  UserCog,
   X,
   XCircle,
 } from "lucide-react";
@@ -47,22 +50,42 @@ import {
 import type {
   AdminReportRow,
   ReportStatus,
+  ReportUserSummary,
 } from "@/lib/admin/reports";
 
+/* =========================================================
+   TYPES
+========================================================= */
+
 type ReportsTableProps = {
-  reports: AdminReportRow[];
+  reports:
+    AdminReportRow[];
 
   pagination: {
-    page: number;
-    pageSize: number;
-    total: number;
-    pageCount: number;
+    page:
+      number;
+
+    pageSize:
+      number;
+
+    total:
+      number;
+
+    pageCount:
+      number;
   };
 
-  initialQuery: string;
-  initialStatus: string;
-  initialType: string;
-  initialPin: string;
+  initialQuery:
+    string;
+
+  initialStatus:
+    string;
+
+  initialType:
+    string;
+
+  initialPin:
+    string;
 };
 
 type ReportModerationAction =
@@ -71,19 +94,29 @@ type ReportModerationAction =
   | "dismissed";
 
 type PendingReportAction = {
-  status: ReportModerationAction;
+  status:
+    ReportModerationAction;
 
-  title: string;
+  title:
+    string;
 
-  description: string;
+  description:
+    string;
 
-  confirmLabel: string;
+  confirmLabel:
+    string;
 
-  variant: ConfirmationVariant;
+  variant:
+    ConfirmationVariant;
 };
 
+/* =========================================================
+   FORMATTERS
+========================================================= */
+
 function formatLabel(
-  value: string,
+  value:
+    string,
 ) {
   return value
     .replace(
@@ -104,7 +137,9 @@ function formatDateTime(
     | string
     | null,
 ) {
-  if (!value) {
+  if (
+    !value
+  ) {
     return "—";
   }
 
@@ -124,15 +159,27 @@ function formatDateTime(
   return new Intl.DateTimeFormat(
     "en-PH",
     {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
+      month:
+        "short",
+
+      day:
+        "numeric",
+
+      year:
+        "numeric",
+
+      hour:
+        "numeric",
+
+      minute:
+        "2-digit",
+
       timeZone:
         "Asia/Manila",
     },
-  ).format(date);
+  ).format(
+    date,
+  );
 }
 
 function formatDate(
@@ -140,7 +187,9 @@ function formatDate(
     | string
     | null,
 ) {
-  if (!value) {
+  if (
+    !value
+  ) {
     return "—";
   }
 
@@ -160,24 +209,30 @@ function formatDate(
   return new Intl.DateTimeFormat(
     "en-PH",
     {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
+      month:
+        "short",
+
+      day:
+        "numeric",
+
+      year:
+        "numeric",
+
       timeZone:
         "Asia/Manila",
     },
-  ).format(date);
+  ).format(
+    date,
+  );
 }
+
+/* =========================================================
+   USER / REPORTER HELPERS
+========================================================= */
 
 function personName(
   user:
-    | {
-        username:
-          string | null;
-
-        full_name:
-          string | null;
-      }
+    | ReportUserSummary
     | null,
 ) {
   return (
@@ -185,9 +240,178 @@ function personName(
       ?.trim() ||
     user?.username
       ?.trim() ||
+    user?.email
+      ?.trim() ||
     "Unknown user"
   );
 }
+
+function reporterName(
+  report:
+    AdminReportRow,
+) {
+  const identity =
+    report.reporter_identity;
+
+  if (
+    identity.full_name
+      ?.trim()
+  ) {
+    return identity.full_name.trim();
+  }
+
+  if (
+    identity.username
+      ?.trim()
+  ) {
+    return identity.username.trim();
+  }
+
+  if (
+    identity.email
+      ?.trim()
+  ) {
+    return identity.email.trim();
+  }
+
+  if (
+    report.reporter_source ===
+    "admin"
+  ) {
+    return "Administrator";
+  }
+
+  if (
+    report.reporter_source ===
+    "system"
+  ) {
+    return "PIN & TELL Moderation";
+  }
+
+  if (
+    report.reporter_source ===
+    "user"
+  ) {
+    return "User account";
+  }
+
+  return "Unknown reporter";
+}
+
+function reporterSecondaryText(
+  report:
+    AdminReportRow,
+) {
+  const identity =
+    report.reporter_identity;
+
+  if (
+    report.reporter_source ===
+    "admin"
+  ) {
+    return (
+      identity.email ||
+      identity.role ||
+      "Administrator"
+    );
+  }
+
+  if (
+    report.reporter_source ===
+    "system"
+  ) {
+    return "Automated moderation";
+  }
+
+  if (
+    identity.username
+  ) {
+    return `@${identity.username}`;
+  }
+
+  if (
+    identity.email
+  ) {
+    return identity.email;
+  }
+
+  return null;
+}
+
+function ReporterSourceBadge({
+  report,
+}: {
+  report:
+    AdminReportRow;
+}) {
+  if (
+    report.reporter_source ===
+    "admin"
+  ) {
+    return (
+      <span
+        className="
+          inline-flex
+          items-center
+          gap-1
+          border
+          border-[#FDC1C9]
+          bg-[#FDC1C9]/15
+          px-1.5
+          py-0.5
+          text-[8px]
+          font-bold
+          uppercase
+          tracking-[0.07em]
+          text-[#A92F56]
+        "
+      >
+        <UserCog
+          size={9}
+        />
+
+        Admin
+      </span>
+    );
+  }
+
+  if (
+    report.reporter_source ===
+    "system"
+  ) {
+    return (
+      <span
+        className="
+          inline-flex
+          items-center
+          gap-1
+          border
+          border-violet-200
+          bg-violet-50
+          px-1.5
+          py-0.5
+          text-[8px]
+          font-bold
+          uppercase
+          tracking-[0.07em]
+          text-violet-700
+        "
+      >
+        <Bot
+          size={9}
+        />
+
+        System
+      </span>
+    );
+  }
+
+  return null;
+}
+
+/* =========================================================
+   REPORT TARGET
+========================================================= */
 
 function reportTargetLabel(
   report:
@@ -229,10 +453,15 @@ function reportTargetLabel(
   return "Unknown target";
 }
 
+/* =========================================================
+   STATUS BADGE
+========================================================= */
+
 function StatusBadge({
   status,
 }: {
-  status: ReportStatus;
+  status:
+    ReportStatus;
 }) {
   const styles:
     Record<
@@ -282,6 +511,10 @@ function StatusBadge({
   );
 }
 
+/* =========================================================
+   TARGET ICON
+========================================================= */
+
 function TargetIcon({
   type,
 }: {
@@ -291,7 +524,8 @@ function TargetIcon({
     ]["type"];
 }) {
   if (
-    type === "pin"
+    type ===
+    "pin"
   ) {
     return (
       <MapPin
@@ -312,7 +546,8 @@ function TargetIcon({
   }
 
   if (
-    type === "chat"
+    type ===
+    "chat"
   ) {
     return (
       <MessagesSquare
@@ -328,6 +563,10 @@ function TargetIcon({
   );
 }
 
+/* =========================================================
+   CSV
+========================================================= */
+
 function escapeCsv(
   value:
     | string
@@ -337,7 +576,8 @@ function escapeCsv(
 ) {
   const text =
     String(
-      value ?? "",
+      value ??
+        "",
     );
 
   return `"${text.replace(
@@ -345,6 +585,10 @@ function escapeCsv(
     '""',
   )}"`;
 }
+
+/* =========================================================
+   MAIN COMPONENT
+========================================================= */
 
 export default function ReportsTable({
   reports,
@@ -377,7 +621,9 @@ export default function ReportsTable({
   ] =
     useState<
       number | null
-    >(null);
+    >(
+      null,
+    );
 
   const selectedReport =
     useMemo(
@@ -386,10 +632,13 @@ export default function ReportsTable({
         null
           ? null
           : reports.find(
-              (report) =>
+              (
+                report,
+              ) =>
                 report.id ===
                 selectedReportId,
-            ) ?? null,
+            ) ??
+            null,
       [
         reports,
         selectedReportId,
@@ -402,7 +651,9 @@ export default function ReportsTable({
   ] =
     useState<
       PendingReportAction | null
-    >(null);
+    >(
+      null,
+    );
 
   const [
     actionMessage,
@@ -413,19 +664,19 @@ export default function ReportsTable({
         | "success"
         | "error";
 
-      text: string;
+      text:
+        string;
     } | null>(
       null,
     );
 
-  /*
-   * Create Ban modal state.
-   */
   const [
     banModalOpen,
     setBanModalOpen,
   ] =
-    useState(false);
+    useState(
+      false,
+    );
 
   const [
     banMessage,
@@ -436,7 +687,8 @@ export default function ReportsTable({
         | "success"
         | "error";
 
-      text: string;
+      text:
+        string;
     } | null>(
       null,
     );
@@ -446,6 +698,10 @@ export default function ReportsTable({
     startTransition,
   ] =
     useTransition();
+
+  /* =======================================================
+     KEEP SEARCH STATE SYNCED
+  ======================================================= */
 
   useEffect(() => {
     const frame =
@@ -465,9 +721,10 @@ export default function ReportsTable({
     initialQuery,
   ]);
 
-  /*
-   * Debounced report search.
-   */
+  /* =======================================================
+     SEARCH
+  ======================================================= */
+
   useEffect(() => {
     const timeout =
       window.setTimeout(
@@ -480,7 +737,9 @@ export default function ReportsTable({
           const cleaned =
             query.trim();
 
-          if (cleaned) {
+          if (
+            cleaned
+          ) {
             params.set(
               "q",
               cleaned,
@@ -522,13 +781,10 @@ export default function ReportsTable({
     router,
   ]);
 
-  /*
-   * Lock body scrolling while
-   * the report drawer is open.
-   *
-   * Escape closes the drawer only
-   * if another modal is not open.
-   */
+  /* =======================================================
+     DRAWER BODY LOCK
+  ======================================================= */
+
   useEffect(() => {
     if (
       !selectedReport
@@ -588,6 +844,10 @@ export default function ReportsTable({
     isPending,
   ]);
 
+  /* =======================================================
+     PAGINATION TEXT
+  ======================================================= */
+
   const showingText =
     useMemo(() => {
       if (
@@ -617,9 +877,15 @@ export default function ReportsTable({
       pagination,
     ]);
 
+  /* =======================================================
+     FILTER HELPERS
+  ======================================================= */
+
   function updateFilter(
-    key: string,
-    value: string,
+    key:
+      string,
+    value:
+      string,
     defaultValue:
       string,
   ) {
@@ -681,7 +947,8 @@ export default function ReportsTable({
   }
 
   function pageUrl(
-    page: number,
+    page:
+      number,
   ) {
     const params =
       new URLSearchParams(
@@ -690,11 +957,17 @@ export default function ReportsTable({
 
     params.set(
       "page",
-      String(page),
+      String(
+        page,
+      ),
     );
 
     return `/admin/reports?${params.toString()}`;
   }
+
+  /* =======================================================
+     CSV EXPORT
+  ======================================================= */
 
   function exportCurrentPage() {
     if (
@@ -710,6 +983,7 @@ export default function ReportsTable({
         "Type",
         "Target",
         "Reporter",
+        "Reporter Source",
         "Reported User",
         "Reason",
         "Details",
@@ -731,9 +1005,11 @@ export default function ReportsTable({
             report,
           ),
 
-          personName(
-            report.reporter,
+          reporterName(
+            report,
           ),
+
+          report.reporter_source,
 
           report.reported_user
             ? personName(
@@ -766,14 +1042,20 @@ export default function ReportsTable({
     const csv =
       rows
         .map(
-          (row) =>
+          (
+            row,
+          ) =>
             row
               .map(
                 escapeCsv,
               )
-              .join(","),
+              .join(
+                ",",
+              ),
         )
-        .join("\r\n");
+        .join(
+          "\r\n",
+        );
 
     const blob =
       new Blob(
@@ -808,13 +1090,16 @@ export default function ReportsTable({
     );
 
     anchor.click();
-
     anchor.remove();
 
     URL.revokeObjectURL(
       url,
     );
   }
+
+  /* =======================================================
+     REPORT ACTIONS
+  ======================================================= */
 
   function requestReportAction(
     status:
@@ -833,7 +1118,8 @@ export default function ReportsTable({
         "reviewing"
     ) {
       setActionMessage({
-        type: "error",
+        type:
+          "error",
 
         text:
           "This report has already been closed and cannot be changed from this screen.",
@@ -1013,11 +1299,16 @@ export default function ReportsTable({
   const canCloseReport =
     reportIsOpen;
 
+  /* =======================================================
+     RENDER
+  ======================================================= */
+
   return (
     <>
-      {/* ==========================
+      {/* ===================================================
           REPORTS TABLE
-      ========================== */}
+      =================================================== */}
+
       <section
         className="
           border
@@ -1026,6 +1317,7 @@ export default function ReportsTable({
         "
       >
         {/* Toolbar */}
+
         <div
           className="
             flex
@@ -1283,7 +1575,8 @@ export default function ReportsTable({
           </div>
         </div>
 
-        {/* Pin-specific filter */}
+        {/* Pin filter */}
+
         {initialPin && (
           <div
             className="
@@ -1319,8 +1612,7 @@ export default function ReportsTable({
                 "
               >
                 Showing reports
-                associated with
-                Pin #
+                associated with Pin #
                 {initialPin}
               </p>
             </div>
@@ -1343,6 +1635,7 @@ export default function ReportsTable({
         )}
 
         {/* Table */}
+
         {reports.length >
         0 ? (
           <div
@@ -1353,7 +1646,7 @@ export default function ReportsTable({
             <table
               className="
                 w-full
-                min-w-[1150px]
+                min-w-[1180px]
                 border-collapse
                 text-left
               "
@@ -1397,9 +1690,7 @@ export default function ReportsTable({
                           last:pr-5
                         "
                       >
-                        {
-                          heading
-                        }
+                        {heading}
                       </th>
                     ),
                   )}
@@ -1410,282 +1701,318 @@ export default function ReportsTable({
                 {reports.map(
                   (
                     report,
-                  ) => (
-                    <tr
-                      key={
-                        report.id
-                      }
-                      className="
-                        border-b
-                        border-slate-100
-                        transition-colors
-                        last:border-b-0
-                        hover:bg-slate-50/60
-                      "
-                    >
-                      <td
+                  ) => {
+                    const secondary =
+                      reporterSecondaryText(
+                        report,
+                      );
+
+                    return (
+                      <tr
+                        key={
+                          report.id
+                        }
                         className="
-                          px-5
-                          py-3.5
+                          border-b
+                          border-slate-100
+                          transition-colors
+                          last:border-b-0
+                          hover:bg-slate-50/60
                         "
                       >
-                        <div
+                        {/* Report */}
+
+                        <td
                           className="
-                            flex
-                            items-center
-                            gap-3
+                            px-5
+                            py-3.5
                           "
                         >
                           <div
                             className="
                               flex
-                              h-9
-                              w-9
-                              shrink-0
                               items-center
-                              justify-center
-                              bg-[#A92F56]/[0.08]
-                              text-[#A92F56]
+                              gap-3
                             "
                           >
-                            <Flag
-                              size={15}
-                            />
+                            <div
+                              className="
+                                flex
+                                h-9
+                                w-9
+                                shrink-0
+                                items-center
+                                justify-center
+                                bg-[#A92F56]/[0.08]
+                                text-[#A92F56]
+                              "
+                            >
+                              <Flag
+                                size={15}
+                              />
+                            </div>
+
+                            <div>
+                              <p
+                                className="
+                                  text-xs
+                                  font-semibold
+                                  text-slate-900
+                                "
+                              >
+                                Report #
+                                {report.id}
+                              </p>
+
+                              <p
+                                className="
+                                  mt-0.5
+                                  text-[10px]
+                                  capitalize
+                                  text-slate-400
+                                "
+                              >
+                                {
+                                  report.target
+                                    .type
+                                }
+                              </p>
+                            </div>
                           </div>
+                        </td>
 
-                          <div>
-                            <p
-                              className="
-                                text-xs
-                                font-semibold
-                                text-slate-900
-                              "
-                            >
-                              Report #
-                              {
-                                report.id
-                              }
-                            </p>
+                        {/* Type */}
 
-                            <p
-                              className="
-                                mt-0.5
-                                text-[10px]
-                                text-slate-400
-                              "
-                            >
-                              {
+                        <td
+                          className="
+                            px-4
+                            py-3.5
+                            text-xs
+                            text-slate-600
+                          "
+                        >
+                          {formatLabel(
+                            report.type,
+                          )}
+                        </td>
+
+                        {/* Target */}
+
+                        <td
+                          className="
+                            px-4
+                            py-3.5
+                          "
+                        >
+                          <div
+                            className="
+                              flex
+                              max-w-[180px]
+                              items-center
+                              gap-2
+                            "
+                          >
+                            <TargetIcon
+                              type={
                                 report.target
                                   .type
                               }
-                            </p>
+                            />
+
+                            <span
+                              className="
+                                truncate
+                                text-xs
+                                text-slate-600
+                              "
+                            >
+                              {reportTargetLabel(
+                                report,
+                              )}
+                            </span>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      <td
-                        className="
-                          px-4
-                          py-3.5
-                          text-xs
-                          text-slate-600
-                        "
-                      >
-                        {formatLabel(
-                          report.type,
-                        )}
-                      </td>
+                        {/* Reported By */}
 
-                      <td
-                        className="
-                          px-4
-                          py-3.5
-                        "
-                      >
-                        <div
+                        <td
                           className="
-                            flex
-                            max-w-[180px]
-                            items-center
-                            gap-2
+                            px-4
+                            py-3.5
                           "
                         >
-                          <TargetIcon
-                            type={
-                              report.target
-                                .type
-                            }
-                          />
-
-                          <span
+                          <div
                             className="
+                              max-w-[180px]
+                            "
+                          >
+                            <div
+                              className="
+                                flex
+                                items-center
+                                gap-1.5
+                              "
+                            >
+                              <p
+                                className="
+                                  truncate
+                                  text-xs
+                                  font-medium
+                                  text-slate-700
+                                "
+                              >
+                                {reporterName(
+                                  report,
+                                )}
+                              </p>
+
+                              <ReporterSourceBadge
+                                report={
+                                  report
+                                }
+                              />
+                            </div>
+
+                            {secondary && (
+                              <p
+                                className="
+                                  mt-0.5
+                                  truncate
+                                  text-[9px]
+                                  text-slate-400
+                                "
+                              >
+                                {secondary}
+                              </p>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Reason */}
+
+                        <td
+                          className="
+                            px-4
+                            py-3.5
+                          "
+                        >
+                          <p
+                            className="
+                              max-w-[210px]
                               truncate
                               text-xs
                               text-slate-600
                             "
                           >
-                            {reportTargetLabel(
-                              report,
-                            )}
-                          </span>
-                        </div>
-                      </td>
+                            {report.reason}
+                          </p>
+                        </td>
 
-                      <td
-                        className="
-                          px-4
-                          py-3.5
-                        "
-                      >
-                        <p
+                        {/* Assigned */}
+
+                        <td
                           className="
-                            max-w-[150px]
-                            truncate
-                            text-xs
-                            font-medium
-                            text-slate-700
+                            px-4
+                            py-3.5
+                            text-[11px]
+                            text-slate-500
                           "
                         >
-                          {personName(
-                            report.reporter,
-                          )}
-                        </p>
+                          {report.assigned_admin
+                            ? report
+                                .assigned_admin
+                                .full_name ||
+                              report
+                                .assigned_admin
+                                .email
+                            : "Unassigned"}
+                        </td>
 
-                        {report.reporter
-                          ?.username && (
-                          <p
+                        {/* Status */}
+
+                        <td
+                          className="
+                            px-4
+                            py-3.5
+                          "
+                        >
+                          <StatusBadge
+                            status={
+                              report.status
+                            }
+                          />
+                        </td>
+
+                        {/* Date */}
+
+                        <td
+                          className="
+                            px-4
+                            py-3.5
+                            text-[11px]
+                            text-slate-500
+                          "
+                        >
+                          {formatDate(
+                            report.created_at,
+                          )}
+                        </td>
+
+                        {/* Action */}
+
+                        <td
+                          className="
+                            px-5
+                            py-3.5
+                            text-right
+                          "
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedReportId(
+                                report.id,
+                              );
+
+                              setActionMessage(
+                                null,
+                              );
+
+                              setBanMessage(
+                                null,
+                              );
+
+                              setPendingAction(
+                                null,
+                              );
+                            }}
                             className="
-                              mt-0.5
-                              text-[9px]
-                              text-slate-400
+                              inline-flex
+                              h-8
+                              items-center
+                              gap-1.5
+                              border
+                              border-slate-200
+                              px-2.5
+                              text-[11px]
+                              font-medium
+                              text-slate-600
+                              transition
+                              hover:border-slate-300
+                              hover:bg-slate-50
+                              hover:text-slate-900
                             "
                           >
-                            @
-                            {
-                              report
-                                .reporter
-                                .username
-                            }
-                          </p>
-                        )}
-                      </td>
+                            <Eye
+                              size={13}
+                            />
 
-                      <td
-                        className="
-                          px-4
-                          py-3.5
-                        "
-                      >
-                        <p
-                          className="
-                            max-w-[210px]
-                            truncate
-                            text-xs
-                            text-slate-600
-                          "
-                        >
-                          {
-                            report.reason
-                          }
-                        </p>
-                      </td>
-
-                      <td
-                        className="
-                          px-4
-                          py-3.5
-                          text-[11px]
-                          text-slate-500
-                        "
-                      >
-                        {report.assigned_admin
-                          ? report
-                              .assigned_admin
-                              .full_name ||
-                            report
-                              .assigned_admin
-                              .email
-                          : "Unassigned"}
-                      </td>
-
-                      <td
-                        className="
-                          px-4
-                          py-3.5
-                        "
-                      >
-                        <StatusBadge
-                          status={
-                            report.status
-                          }
-                        />
-                      </td>
-
-                      <td
-                        className="
-                          px-4
-                          py-3.5
-                          text-[11px]
-                          text-slate-500
-                        "
-                      >
-                        {formatDate(
-                          report.created_at,
-                        )}
-                      </td>
-
-                      <td
-                        className="
-                          px-5
-                          py-3.5
-                          text-right
-                        "
-                      >
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedReportId(
-                              report.id,
-                            );
-
-                            setActionMessage(
-                              null,
-                            );
-
-                            setBanMessage(
-                              null,
-                            );
-
-                            setPendingAction(
-                              null,
-                            );
-                          }}
-                          className="
-                            inline-flex
-                            h-8
-                            items-center
-                            gap-1.5
-                            border
-                            border-slate-200
-                            px-2.5
-                            text-[11px]
-                            font-medium
-                            text-slate-600
-                            transition
-                            hover:border-slate-300
-                            hover:bg-slate-50
-                            hover:text-slate-900
-                          "
-                        >
-                          <Eye
-                            size={13}
-                          />
-
-                          Review
-                        </button>
-                      </td>
-                    </tr>
-                  ),
+                            Review
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  },
                 )}
               </tbody>
             </table>
@@ -1743,6 +2070,7 @@ export default function ReportsTable({
         )}
 
         {/* Pagination */}
+
         <div
           className="
             flex
@@ -1814,13 +2142,9 @@ export default function ReportsTable({
                 text-slate-500
               "
             >
-              {
-                pagination.page
-              }
+              {pagination.page}
               {" / "}
-              {
-                pagination.pageCount
-              }
+              {pagination.pageCount}
             </span>
 
             {pagination.page <
@@ -1861,9 +2185,10 @@ export default function ReportsTable({
         </div>
       </section>
 
-      {/* ==========================
+      {/* ===================================================
           REPORT REVIEW DRAWER
-      ========================== */}
+      =================================================== */}
+
       {selectedReport && (
         <>
           <button
@@ -1908,6 +2233,7 @@ export default function ReportsTable({
             "
           >
             {/* Drawer header */}
+
             <div
               className="
                 flex
@@ -1936,9 +2262,7 @@ export default function ReportsTable({
                     "
                   >
                     Report #
-                    {
-                      selectedReport.id
-                    }
+                    {selectedReport.id}
                   </p>
 
                   <StatusBadge
@@ -1988,6 +2312,7 @@ export default function ReportsTable({
                   disabled:cursor-not-allowed
                   disabled:opacity-40
                 "
+                aria-label="Close report drawer"
               >
                 <X
                   size={15}
@@ -2001,7 +2326,8 @@ export default function ReportsTable({
                 overflow-y-auto
               "
             >
-              {/* Report information */}
+              {/* Report info */}
+
               <div
                 className="
                   border-b
@@ -2101,9 +2427,7 @@ export default function ReportsTable({
                       text-slate-900
                     "
                   >
-                    {
-                      selectedReport.reason
-                    }
+                    {selectedReport.reason}
                   </p>
                 </div>
 
@@ -2137,6 +2461,7 @@ export default function ReportsTable({
               </div>
 
               {/* Reported content */}
+
               <div
                 className="
                   border-b
@@ -2280,9 +2605,10 @@ export default function ReportsTable({
                 </div>
               </div>
 
-              {/* ==========================
+              {/* =================================================
                   PEOPLE INVOLVED
-              ========================== */}
+              ================================================= */}
+
               <div
                 className="
                   border-b
@@ -2312,6 +2638,7 @@ export default function ReportsTable({
                   "
                 >
                   {/* Reporter */}
+
                   <div
                     className="
                       border
@@ -2319,53 +2646,213 @@ export default function ReportsTable({
                       p-3
                     "
                   >
-                    <p
+                    <div
                       className="
-                        text-[9px]
-                        font-semibold
-                        uppercase
-                        tracking-wide
-                        text-slate-400
+                        flex
+                        items-center
+                        justify-between
+                        gap-2
                       "
                     >
-                      Reported by
-                    </p>
-
-                    <p
-                      className="
-                        mt-2
-                        truncate
-                        text-xs
-                        font-semibold
-                        text-slate-800
-                      "
-                    >
-                      {personName(
-                        selectedReport.reporter,
-                      )}
-                    </p>
-
-                    {selectedReport
-                      .reporter_id && (
-                      <Link
-                        href={`/admin/users?q=${encodeURIComponent(
-                          selectedReport.reporter_id,
-                        )}`}
+                      <p
                         className="
-                          mt-2
-                          inline-block
-                          text-[10px]
+                          text-[9px]
                           font-semibold
-                          text-[#A92F56]
-                          hover:text-[#72213A]
+                          uppercase
+                          tracking-wide
+                          text-slate-400
                         "
                       >
-                        View user
-                      </Link>
+                        Reported by
+                      </p>
+
+                      <ReporterSourceBadge
+                        report={
+                          selectedReport
+                        }
+                      />
+                    </div>
+
+                    <div
+                      className="
+                        mt-3
+                        flex
+                        items-start
+                        gap-2.5
+                      "
+                    >
+                      <div
+                        className={`
+                          flex
+                          h-8
+                          w-8
+                          shrink-0
+                          items-center
+                          justify-center
+                          ${
+                            selectedReport.reporter_source ===
+                            "admin"
+                              ? "bg-[#A92F56]/[0.08] text-[#A92F56]"
+                              : selectedReport.reporter_source ===
+                                  "system"
+                                ? "bg-violet-50 text-violet-600"
+                                : "bg-slate-100 text-slate-500"
+                          }
+                        `}
+                      >
+                        {selectedReport.reporter_source ===
+                        "admin" ? (
+                          <UserCog
+                            size={14}
+                          />
+                        ) : selectedReport.reporter_source ===
+                          "system" ? (
+                          <Bot
+                            size={14}
+                          />
+                        ) : (
+                          <User
+                            size={14}
+                          />
+                        )}
+                      </div>
+
+                      <div
+                        className="
+                          min-w-0
+                          flex-1
+                        "
+                      >
+                        <p
+                          className="
+                            truncate
+                            text-xs
+                            font-semibold
+                            text-slate-800
+                          "
+                        >
+                          {reporterName(
+                            selectedReport,
+                          )}
+                        </p>
+
+                        {reporterSecondaryText(
+                          selectedReport,
+                        ) && (
+                          <p
+                            className="
+                              mt-0.5
+                              truncate
+                              text-[9px]
+                              text-slate-400
+                            "
+                          >
+                            {reporterSecondaryText(
+                              selectedReport,
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {selectedReport.reporter_source ===
+                      "user" &&
+                      selectedReport
+                        .reporter_id && (
+                        <Link
+                          href={`/admin/users?q=${encodeURIComponent(
+                            selectedReport.reporter_id,
+                          )}`}
+                          className="
+                            mt-3
+                            inline-block
+                            text-[10px]
+                            font-semibold
+                            text-[#A92F56]
+                            hover:text-[#72213A]
+                          "
+                        >
+                          View user
+                        </Link>
+                      )}
+
+                    {selectedReport.reporter_source ===
+                      "admin" && (
+                      <div
+                        className="
+                          mt-3
+                          flex
+                          items-center
+                          gap-1.5
+                          border
+                          border-[#FDC1C9]
+                          bg-[#FDC1C9]/10
+                          px-2.5
+                          py-2
+                        "
+                      >
+                        <ShieldCheck
+                          size={12}
+                          className="
+                            shrink-0
+                            text-[#A92F56]
+                          "
+                        />
+
+                        <p
+                          className="
+                            text-[9px]
+                            leading-4
+                            text-[#72213A]
+                          "
+                        >
+                          This report was
+                          created by an
+                          administrator.
+                        </p>
+                      </div>
+                    )}
+
+                    {selectedReport.reporter_source ===
+                      "system" && (
+                      <div
+                        className="
+                          mt-3
+                          flex
+                          items-center
+                          gap-1.5
+                          border
+                          border-violet-200
+                          bg-violet-50
+                          px-2.5
+                          py-2
+                        "
+                      >
+                        <Bot
+                          size={12}
+                          className="
+                            shrink-0
+                            text-violet-600
+                          "
+                        />
+
+                        <p
+                          className="
+                            text-[9px]
+                            leading-4
+                            text-violet-700
+                          "
+                        >
+                          Generated by
+                          automated content
+                          moderation.
+                        </p>
+                      </div>
                     )}
                   </div>
 
                   {/* Reported user */}
+
                   <div
                     className="
                       border
@@ -2423,6 +2910,28 @@ export default function ReportsTable({
                       </p>
                     )}
 
+                    {!selectedReport
+                      .reported_user
+                      ?.username &&
+                      selectedReport
+                        .reported_user
+                        ?.email && (
+                        <p
+                          className="
+                            mt-0.5
+                            truncate
+                            text-[9px]
+                            text-slate-400
+                          "
+                        >
+                          {
+                            selectedReport
+                              .reported_user
+                              .email
+                          }
+                        </p>
+                      )}
+
                     {selectedReport
                       .reported_user_id && (
                       <Link
@@ -2442,7 +2951,6 @@ export default function ReportsTable({
                       </Link>
                     )}
 
-                    {/* Ban action */}
                     {selectedReport
                       .reported_user_id && (
                       <button
@@ -2519,6 +3027,7 @@ export default function ReportsTable({
               </div>
 
               {/* Review metadata */}
+
               <div
                 className="
                   border-b
@@ -2611,9 +3120,10 @@ export default function ReportsTable({
                 </div>
               </div>
 
-              {/* ==========================
+              {/* =================================================
                   MODERATION ACTIONS
-              ========================== */}
+              ================================================= */}
+
               <div
                 className="
                   px-5
@@ -2641,13 +3151,11 @@ export default function ReportsTable({
                   "
                 >
                   Update the report
-                  workflow after
-                  reviewing the
-                  submitted information
+                  workflow after reviewing
+                  the submitted information
                   and reported content.
                 </p>
 
-                {/* Report action message */}
                 {actionMessage && (
                   <div
                     className={`
@@ -2664,13 +3172,10 @@ export default function ReportsTable({
                       }
                     `}
                   >
-                    {
-                      actionMessage.text
-                    }
+                    {actionMessage.text}
                   </div>
                 )}
 
-                {/* Ban action message */}
                 {banMessage && (
                   <div
                     className={`
@@ -2687,9 +3192,7 @@ export default function ReportsTable({
                       }
                     `}
                   >
-                    {
-                      banMessage.text
-                    }
+                    {banMessage.text}
                   </div>
                 )}
 
@@ -2894,9 +3397,10 @@ export default function ReportsTable({
         </>
       )}
 
-      {/* ==========================
+      {/* ===================================================
           REPORT ACTION MODAL
-      ========================== */}
+      =================================================== */}
+
       <ActionConfirmModal
         open={
           pendingAction !==
@@ -2939,9 +3443,10 @@ export default function ReportsTable({
         }
       />
 
-      {/* ==========================
+      {/* ===================================================
           CREATE BAN MODAL
-      ========================== */}
+      =================================================== */}
+
       <CreateBanModal
         open={
           banModalOpen

@@ -18,11 +18,18 @@ export type ReportType =
   | "misinformation"
   | "other";
 
+export type ReportReporterSource =
+  | "user"
+  | "admin"
+  | "system"
+  | "unknown";
+
 export type ReportUserSummary = {
   id: string;
   username: string | null;
   full_name: string | null;
   status: string | null;
+  email: string | null;
 };
 
 export type ReportAdminSummary = {
@@ -30,6 +37,15 @@ export type ReportAdminSummary = {
   email: string;
   full_name: string | null;
   role: string;
+};
+
+export type ReportReporterIdentity = {
+  source: ReportReporterSource;
+  id: string | null;
+  full_name: string | null;
+  username: string | null;
+  email: string | null;
+  role: string | null;
 };
 
 export type ReportTarget = {
@@ -40,78 +56,215 @@ export type ReportTarget = {
     | "user"
     | "unknown";
 
-  id: string | number | null;
+  id:
+    | string
+    | number
+    | null;
 
-  title: string | null;
-  content: string | null;
+  title:
+    string | null;
 
-  photo_url: string | null;
+  content:
+    string | null;
 
-  pin_id: number | null;
+  photo_url:
+    string | null;
 
-  sender_id: string | null;
-  receiver_id: string | null;
+  pin_id:
+    number | null;
+
+  sender_id:
+    string | null;
+
+  receiver_id:
+    string | null;
 };
 
 export type AdminReportRow = {
-  id: number;
+  id:
+    number;
 
-  reporter_id: string | null;
-  reported_user_id: string | null;
+  reporter_id:
+    string | null;
 
-  pin_id: number | null;
-  comment_id: number | null;
-  chat_id: number | null;
+  reported_user_id:
+    string | null;
 
-  type: ReportType;
-  reason: string;
-  details: string | null;
+  pin_id:
+    number | null;
 
-  status: ReportStatus;
+  comment_id:
+    number | null;
 
-  reviewed_by: string | null;
-  reviewed_at: string | null;
-  created_at: string | null;
+  chat_id:
+    number | null;
 
-  reporter: ReportUserSummary | null;
-  reported_user: ReportUserSummary | null;
+  type:
+    ReportType;
 
-  assigned_admin: ReportAdminSummary | null;
+  reason:
+    string;
 
-  target: ReportTarget;
+  details:
+    string | null;
 
-  previous_reports_count: number;
+  status:
+    ReportStatus;
+
+  reviewed_by:
+    string | null;
+
+  reviewed_at:
+    string | null;
+
+  created_at:
+    string | null;
+
+  reporter:
+    ReportUserSummary | null;
+
+  reporter_admin:
+    ReportAdminSummary | null;
+
+  reporter_source:
+    ReportReporterSource;
+
+  reporter_identity:
+    ReportReporterIdentity;
+
+  reported_user:
+    ReportUserSummary | null;
+
+  assigned_admin:
+    ReportAdminSummary | null;
+
+  target:
+    ReportTarget;
+
+  previous_reports_count:
+    number;
 };
 
 export type ReportsPageData = {
-  reports: AdminReportRow[];
+  reports:
+    AdminReportRow[];
 
   stats: {
-    total: number | null;
-    pending: number | null;
-    reviewing: number | null;
-    resolvedToday: number | null;
+    total:
+      number | null;
+
+    pending:
+      number | null;
+
+    reviewing:
+      number | null;
+
+    resolvedToday:
+      number | null;
   };
 
   pagination: {
-    page: number;
-    pageSize: number;
-    total: number;
-    pageCount: number;
+    page:
+      number;
+
+    pageSize:
+      number;
+
+    total:
+      number;
+
+    pageCount:
+      number;
   };
 
-  hasErrors: boolean;
+  hasErrors:
+    boolean;
 };
 
 type ReportsQuery = {
-  page?: number;
-  search?: string;
-  status?: string;
-  type?: string;
-  pinId?: number | null;
+  page?:
+    number;
+
+  search?:
+    string;
+
+  status?:
+    string;
+
+  type?:
+    string;
+
+  pinId?:
+    number | null;
 };
 
-const PAGE_SIZE = 20;
+type PinSummary = {
+  id:
+    number;
+
+  title:
+    string;
+
+  description:
+    string | null;
+
+  photo_url:
+    string | null;
+
+  creator_id:
+    string | null;
+};
+
+type CommentSummary = {
+  id:
+    number;
+
+  pin_id:
+    number | null;
+
+  user_id:
+    string | null;
+
+  content:
+    string;
+};
+
+type ChatSummary = {
+  id:
+    number;
+
+  sender_id:
+    string;
+
+  receiver_id:
+    string;
+
+  content:
+    string;
+};
+
+type AdminFlagLog = {
+  user_id:
+    string | null;
+
+  description:
+    string | null;
+
+  target_id:
+    string | null;
+
+  created_at:
+    string | null;
+};
+
+const PAGE_SIZE =
+  20;
+
+const MAX_HISTORY_ROWS =
+  10000;
+
+const AUTOMATED_MODERATION_REASON =
+  "Automated content moderation escalation";
 
 const REPORT_STATUSES = [
   "pending",
@@ -133,31 +286,43 @@ const REPORT_TYPES = [
 
 function safeCount(
   result: {
-    count: number | null;
-    error: unknown;
+    count:
+      number | null;
+
+    error:
+      unknown;
   },
 ): number | null {
-  if (result.error) {
+  if (
+    result.error
+  ) {
     return null;
   }
 
-  return result.count ?? 0;
+  return (
+    result.count ??
+    0
+  );
 }
 
 function cleanSearch(
-  value: string,
+  value:
+    string,
 ): string {
   return value
     .trim()
     .replace(
-      /[%*(),"']/g,
+      /[%\*(),"']/g,
       " ",
     )
     .replace(
       /\s+/g,
       " ",
     )
-    .slice(0, 100);
+    .slice(
+      0,
+      100,
+    );
 }
 
 function manilaStartOfToday(): string {
@@ -186,21 +351,27 @@ function manilaStartOfToday(): string {
 
   const year =
     parts.find(
-      (part) =>
+      (
+        part,
+      ) =>
         part.type ===
         "year",
     )?.value;
 
   const month =
     parts.find(
-      (part) =>
+      (
+        part,
+      ) =>
         part.type ===
         "month",
     )?.value;
 
   const day =
     parts.find(
-      (part) =>
+      (
+        part,
+      ) =>
         part.type ===
         "day",
     )?.value;
@@ -208,6 +379,305 @@ function manilaStartOfToday(): string {
   return new Date(
     `${year}-${month}-${day}T00:00:00+08:00`,
   ).toISOString();
+}
+
+function stringMetadataValue(
+  metadata:
+    | Record<
+        string,
+        unknown
+      >
+    | undefined,
+
+  keys:
+    string[],
+): string | null {
+  if (
+    !metadata
+  ) {
+    return null;
+  }
+
+  for (
+    const key of
+    keys
+  ) {
+    const value =
+      metadata[
+        key
+      ];
+
+    if (
+      typeof value ===
+        "string" &&
+      value.trim()
+    ) {
+      return value.trim();
+    }
+  }
+
+  return null;
+}
+
+function metadataFullName(
+  metadata:
+    | Record<
+        string,
+        unknown
+      >
+    | undefined,
+): string | null {
+  const direct =
+    stringMetadataValue(
+      metadata,
+      [
+        "full_name",
+        "name",
+        "display_name",
+      ],
+    );
+
+  if (
+    direct
+  ) {
+    return direct;
+  }
+
+  const firstName =
+    stringMetadataValue(
+      metadata,
+      [
+        "first_name",
+        "given_name",
+      ],
+    );
+
+  const lastName =
+    stringMetadataValue(
+      metadata,
+      [
+        "last_name",
+        "family_name",
+      ],
+    );
+
+  const combined = [
+    firstName,
+    lastName,
+  ]
+    .filter(
+      Boolean,
+    )
+    .join(
+      " ",
+    )
+    .trim();
+
+  return (
+    combined ||
+    null
+  );
+}
+
+function metadataUsername(
+  metadata:
+    | Record<
+        string,
+        unknown
+      >
+    | undefined,
+): string | null {
+  return stringMetadataValue(
+    metadata,
+    [
+      "username",
+      "user_name",
+      "preferred_username",
+    ],
+  );
+}
+
+function emailLocalPart(
+  email:
+    | string
+    | null
+    | undefined,
+): string | null {
+  const cleaned =
+    email?.trim();
+
+  if (
+    !cleaned
+  ) {
+    return null;
+  }
+
+  const local =
+    cleaned
+      .split(
+        "@",
+      )[0]
+      ?.trim();
+
+  return (
+    local ||
+    null
+  );
+}
+
+function parseAdminFlagReportId(
+  description:
+    string | null,
+): number | null {
+  if (
+    !description
+  ) {
+    return null;
+  }
+
+  const match =
+    description.match(
+      /\bReport\s+#(\d+)\b/i,
+    );
+
+  if (
+    !match?.[1]
+  ) {
+    return null;
+  }
+
+  const reportId =
+    Number.parseInt(
+      match[1],
+      10,
+    );
+
+  return (
+    Number.isInteger(
+      reportId,
+    ) &&
+    reportId >
+      0
+      ? reportId
+      : null
+  );
+}
+
+function isAutomatedModerationReport(
+  reason:
+    | string
+    | null
+    | undefined,
+): boolean {
+  return (
+    reason
+      ?.trim()
+      .toLowerCase() ===
+    AUTOMATED_MODERATION_REASON
+      .toLowerCase()
+  );
+}
+
+function userIdentity(
+  user:
+    ReportUserSummary | null,
+): ReportReporterIdentity {
+  return {
+    source:
+      "user",
+
+    id:
+      user?.id ??
+      null,
+
+    full_name:
+      user?.full_name ??
+      null,
+
+    username:
+      user?.username ??
+      null,
+
+    email:
+      user?.email ??
+      null,
+
+    role:
+      null,
+  };
+}
+
+function adminIdentity(
+  admin:
+    ReportAdminSummary | null,
+): ReportReporterIdentity {
+  return {
+    source:
+      "admin",
+
+    id:
+      admin?.id ??
+      null,
+
+    full_name:
+      admin?.full_name ??
+      null,
+
+    username:
+      null,
+
+    email:
+      admin?.email ??
+      null,
+
+    role:
+      admin?.role ??
+      null,
+  };
+}
+
+function systemIdentity(): ReportReporterIdentity {
+  return {
+    source:
+      "system",
+
+    id:
+      null,
+
+    full_name:
+      "PIN & TELL Moderation",
+
+    username:
+      null,
+
+    email:
+      null,
+
+    role:
+      "system",
+  };
+}
+
+function unknownIdentity(): ReportReporterIdentity {
+  return {
+    source:
+      "unknown",
+
+    id:
+      null,
+
+    full_name:
+      null,
+
+    username:
+      null,
+
+    email:
+      null,
+
+    role:
+      null,
+  };
 }
 
 export async function getReportsPageData({
@@ -221,39 +691,53 @@ export async function getReportsPageData({
     getSupabaseAdmin();
 
   const normalizedPage =
-    Number.isFinite(page)
+    Number.isFinite(
+      page,
+    )
       ? Math.max(
           1,
-          Math.floor(page),
+          Math.floor(
+            page,
+          ),
         )
       : 1;
 
   const normalizedSearch =
-    cleanSearch(search);
+    cleanSearch(
+      search,
+    );
 
   const normalizedStatus =
     REPORT_STATUSES.includes(
-      status as ReportStatus,
+      status as
+        ReportStatus,
     )
       ? status
       : "all";
 
   const normalizedType =
     REPORT_TYPES.includes(
-      type as ReportType,
+      type as
+        ReportType,
     )
       ? type
       : "all";
 
   const normalizedPinId =
     pinId &&
-    Number.isInteger(pinId) &&
-    pinId > 0
+    Number.isInteger(
+      pinId,
+    ) &&
+    pinId >
+      0
       ? pinId
       : null;
 
   const from =
-    (normalizedPage - 1) *
+    (
+      normalizedPage -
+      1
+    ) *
     PAGE_SIZE;
 
   const to =
@@ -263,7 +747,9 @@ export async function getReportsPageData({
 
   let reportsQuery =
     supabase
-      .from("reports")
+      .from(
+        "reports",
+      )
       .select(
         `
           id,
@@ -281,7 +767,8 @@ export async function getReportsPageData({
           created_at
         `,
         {
-          count: "exact",
+          count:
+            "exact",
         },
       );
 
@@ -338,7 +825,9 @@ export async function getReportsPageData({
           [
             `reason.ilike.%${normalizedSearch}%`,
             `details.ilike.%${normalizedSearch}%`,
-          ].join(","),
+          ].join(
+            ",",
+          ),
         );
     }
   }
@@ -348,7 +837,8 @@ export async function getReportsPageData({
       .order(
         "created_at",
         {
-          ascending: false,
+          ascending:
+            false,
         },
       )
       .range(
@@ -370,40 +860,72 @@ export async function getReportsPageData({
       reportsQuery,
 
       supabase
-        .from("reports")
-        .select("id", {
-          count: "exact",
-          head: true,
-        }),
+        .from(
+          "reports",
+        )
+        .select(
+          "id",
+          {
+            count:
+              "exact",
+
+            head:
+              true,
+          },
+        ),
 
       supabase
-        .from("reports")
-        .select("id", {
-          count: "exact",
-          head: true,
-        })
+        .from(
+          "reports",
+        )
+        .select(
+          "id",
+          {
+            count:
+              "exact",
+
+            head:
+              true,
+          },
+        )
         .eq(
           "status",
           "pending",
         ),
 
       supabase
-        .from("reports")
-        .select("id", {
-          count: "exact",
-          head: true,
-        })
+        .from(
+          "reports",
+        )
+        .select(
+          "id",
+          {
+            count:
+              "exact",
+
+            head:
+              true,
+          },
+        )
         .eq(
           "status",
           "reviewing",
         ),
 
       supabase
-        .from("reports")
-        .select("id", {
-          count: "exact",
-          head: true,
-        })
+        .from(
+          "reports",
+        )
+        .select(
+          "id",
+          {
+            count:
+              "exact",
+
+            head:
+              true,
+          },
+        )
         .eq(
           "status",
           "resolved",
@@ -429,76 +951,80 @@ export async function getReportsPageData({
       : reportsResult.data ??
         [];
 
-  const pinIds =
-    [
-      ...new Set(
-        rawReports
-          .map(
-            (report) =>
-              report.pin_id,
-          )
-          .filter(
-            (
-              id,
-            ): id is number =>
-              typeof id ===
-              "number",
+  const reportIds = [
+    ...new Set(
+      rawReports.map(
+        (
+          report,
+        ) =>
+          Number(
+            report.id,
           ),
       ),
-    ];
+    ),
+  ];
 
-  const commentIds =
-    [
-      ...new Set(
-        rawReports
-          .map(
-            (report) =>
-              report.comment_id,
-          )
-          .filter(
-            (
-              id,
-            ): id is number =>
-              typeof id ===
-              "number",
-          ),
-      ),
-    ];
+  const reportIdSet =
+    new Set(
+      reportIds,
+    );
 
-  const chatIds =
-    [
-      ...new Set(
-        rawReports
-          .map(
-            (report) =>
-              report.chat_id,
-          )
-          .filter(
-            (
-              id,
-            ): id is number =>
-              typeof id ===
-              "number",
-          ),
-      ),
-    ];
+  const pinIds = [
+    ...new Set(
+      rawReports
+        .map(
+          (
+            report,
+          ) =>
+            report.pin_id,
+        )
+        .filter(
+          (
+            id,
+          ): id is number =>
+            typeof id ===
+            "number",
+        ),
+    ),
+  ];
 
-  const adminIds =
-    [
-      ...new Set(
-        rawReports
-          .map(
-            (report) =>
-              report.reviewed_by,
-          )
-          .filter(
-            (
-              id,
-            ): id is string =>
-              Boolean(id),
-          ),
-      ),
-    ];
+  const commentIds = [
+    ...new Set(
+      rawReports
+        .map(
+          (
+            report,
+          ) =>
+            report.comment_id,
+        )
+        .filter(
+          (
+            id,
+          ): id is number =>
+            typeof id ===
+            "number",
+        ),
+    ),
+  ];
+
+  const chatIds = [
+    ...new Set(
+      rawReports
+        .map(
+          (
+            report,
+          ) =>
+            report.chat_id,
+        )
+        .filter(
+          (
+            id,
+          ): id is number =>
+            typeof id ===
+            "number",
+        ),
+    ),
+  ];
 
   const profileIds =
     new Set<string>();
@@ -527,35 +1053,19 @@ export async function getReportsPageData({
   const pins =
     new Map<
       number,
-      {
-        id: number;
-        title: string;
-        description: string | null;
-        photo_url: string | null;
-        creator_id: string | null;
-      }
+      PinSummary
     >();
 
   const comments =
     new Map<
       number,
-      {
-        id: number;
-        pin_id: number | null;
-        user_id: string | null;
-        content: string;
-      }
+      CommentSummary
     >();
 
   const chats =
     new Map<
       number,
-      {
-        id: number;
-        sender_id: string;
-        receiver_id: string;
-        content: string;
-      }
+      ChatSummary
     >();
 
   const relationErrors:
@@ -565,11 +1075,15 @@ export async function getReportsPageData({
     pinsResult,
     commentsResult,
     chatsResult,
+    adminFlagLogsResult,
   ] =
     await Promise.all([
-      pinIds.length > 0
+      pinIds.length >
+      0
         ? supabase
-            .from("pins")
+            .from(
+              "pins",
+            )
             .select(`
               id,
               title,
@@ -582,8 +1096,11 @@ export async function getReportsPageData({
               pinIds,
             )
         : Promise.resolve({
-            data: [],
-            error: null,
+            data:
+              [],
+
+            error:
+              null,
           }),
 
       commentIds.length >
@@ -603,13 +1120,19 @@ export async function getReportsPageData({
               commentIds,
             )
         : Promise.resolve({
-            data: [],
-            error: null,
+            data:
+              [],
+
+            error:
+              null,
           }),
 
-      chatIds.length > 0
+      chatIds.length >
+      0
         ? supabase
-            .from("chats")
+            .from(
+              "chats",
+            )
             .select(`
               id,
               sender_id,
@@ -621,8 +1144,59 @@ export async function getReportsPageData({
               chatIds,
             )
         : Promise.resolve({
-            data: [],
-            error: null,
+            data:
+              [],
+
+            error:
+              null,
+          }),
+
+      pinIds.length >
+      0
+        ? supabase
+            .from(
+              "logs",
+            )
+            .select(`
+              user_id,
+              description,
+              target_id,
+              created_at
+            `)
+            .eq(
+              "actor_type",
+              "admin",
+            )
+            .eq(
+              "action_type",
+              "admin_pin_flagged",
+            )
+            .eq(
+              "target_table",
+              "pins",
+            )
+            .in(
+              "target_id",
+              pinIds.map(
+                String,
+              ),
+            )
+            .order(
+              "created_at",
+              {
+                ascending:
+                  false,
+              },
+            )
+            .limit(
+              MAX_HISTORY_ROWS,
+            )
+        : Promise.resolve({
+            data:
+              [],
+
+            error:
+              null,
           }),
     ]);
 
@@ -635,10 +1209,13 @@ export async function getReportsPageData({
   } else {
     for (
       const pin of
-      pinsResult.data ?? []
+      pinsResult.data ??
+      []
     ) {
       pins.set(
-        Number(pin.id),
+        Number(
+          pin.id,
+        ),
         {
           id:
             Number(
@@ -721,7 +1298,8 @@ export async function getReportsPageData({
   } else {
     for (
       const chat of
-      chatsResult.data ?? []
+      chatsResult.data ??
+      []
     ) {
       chats.set(
         Number(
@@ -754,6 +1332,75 @@ export async function getReportsPageData({
     }
   }
 
+  /*
+   * Admin-created pin flags have
+   * reporter_id = null because the
+   * reports.reporter_id foreign key
+   * points to auth.users.
+   *
+   * The flag action records the
+   * administrator in logs using:
+   *
+   * action_type = admin_pin_flagged
+   * target_table = pins
+   * user_id = admin UUID
+   *
+   * and includes Report #<id> in the
+   * audit description.
+   *
+   * Resolve that audit record back to
+   * the report here.
+   */
+  const adminReporterByReportId =
+    new Map<
+      number,
+      string
+    >();
+
+  if (
+    adminFlagLogsResult.error
+  ) {
+    relationErrors.push(
+      adminFlagLogsResult.error,
+    );
+  } else {
+    for (
+      const rawLog of
+      (
+        adminFlagLogsResult.data ??
+        []
+      ) as AdminFlagLog[]
+    ) {
+      if (
+        !rawLog.user_id
+      ) {
+        continue;
+      }
+
+      const reportId =
+        parseAdminFlagReportId(
+          rawLog.description,
+        );
+
+      if (
+        !reportId ||
+        !reportIdSet.has(
+          reportId,
+        ) ||
+        adminReporterByReportId.has(
+          reportId,
+        )
+      ) {
+        continue;
+      }
+
+      adminReporterByReportId.set(
+        reportId,
+        rawLog.user_id,
+      );
+    }
+  }
+
   const profiles =
     new Map<
       string,
@@ -761,11 +1408,14 @@ export async function getReportsPageData({
     >();
 
   if (
-    profileIds.size > 0
+    profileIds.size >
+    0
   ) {
     const profileResult =
       await supabase
-        .from("profiles")
+        .from(
+          "profiles",
+        )
         .select(`
           id,
           username,
@@ -805,11 +1455,192 @@ export async function getReportsPageData({
 
             status:
               profile.status,
+
+            email:
+              null,
           },
         );
       }
     }
   }
+
+  /*
+   * Some reports can reference a valid
+   * Supabase Auth user even when:
+   *
+   * - their profiles row is missing, or
+   * - full_name is empty, or
+   * - username is empty.
+   *
+   * Resolve those identities through
+   * Supabase Auth so the Reports page
+   * does not unnecessarily show
+   * "Unknown user".
+   */
+  const authFallbackIds = [
+    ...profileIds,
+  ].filter(
+    (
+      userId,
+    ) => {
+      const profile =
+        profiles.get(
+          userId,
+        );
+
+      return (
+        !profile ||
+        (
+          !profile.full_name
+            ?.trim() &&
+          !profile.username
+            ?.trim()
+        )
+      );
+    },
+  );
+
+  if (
+    authFallbackIds.length >
+    0
+  ) {
+    const authResults =
+      await Promise.all(
+        authFallbackIds.map(
+          async (
+            userId,
+          ) => {
+            const result =
+              await supabase
+                .auth
+                .admin
+                .getUserById(
+                  userId,
+                );
+
+            return {
+              userId,
+              result,
+            };
+          },
+        ),
+      );
+
+    for (
+      const {
+        userId,
+        result,
+      } of authResults
+    ) {
+      if (
+        result.error
+      ) {
+        console.error(
+          `[ADMIN REPORTS] Failed to resolve auth identity for ${userId}:`,
+          result.error,
+        );
+
+        continue;
+      }
+
+      const authUser =
+        result.data.user;
+
+      if (
+        !authUser
+      ) {
+        continue;
+      }
+
+      const existing =
+        profiles.get(
+          userId,
+        );
+
+      const metadata =
+        authUser.user_metadata as
+          | Record<
+              string,
+              unknown
+            >
+          | undefined;
+
+      const authFullName =
+        metadataFullName(
+          metadata,
+        );
+
+      const authUsername =
+        metadataUsername(
+          metadata,
+        ) ??
+        emailLocalPart(
+          authUser.email,
+        );
+
+      profiles.set(
+        userId,
+        {
+          id:
+            userId,
+
+          username:
+            existing
+              ?.username ??
+            authUsername,
+
+          full_name:
+            existing
+              ?.full_name ??
+            authFullName,
+
+          status:
+            existing
+              ?.status ??
+            null,
+
+          email:
+            authUser.email ??
+            existing
+              ?.email ??
+            null,
+        },
+      );
+    }
+  }
+
+  /*
+   * Administrators may appear in two
+   * different roles:
+   *
+   * 1. reviewer / assigned admin
+   * 2. creator of an admin pin flag
+   *
+   * Include both groups in the admins
+   * query.
+   */
+  const adminIds = [
+    ...new Set([
+      ...rawReports
+        .map(
+          (
+            report,
+          ) =>
+            report.reviewed_by,
+        )
+        .filter(
+          (
+            id,
+          ): id is string =>
+            Boolean(
+              id,
+            ),
+        ),
+
+      ...adminReporterByReportId
+        .values(),
+    ]),
+  ];
 
   const admins =
     new Map<
@@ -823,7 +1654,9 @@ export async function getReportsPageData({
   ) {
     const adminResult =
       await supabase
-        .from("admins")
+        .from(
+          "admins",
+        )
         .select(`
           id,
           email,
@@ -867,22 +1700,25 @@ export async function getReportsPageData({
     }
   }
 
-  const reportedUserIds =
-    [
-      ...new Set(
-        rawReports
-          .map(
-            (report) =>
-              report.reported_user_id,
-          )
-          .filter(
-            (
+  const reportedUserIds = [
+    ...new Set(
+      rawReports
+        .map(
+          (
+            report,
+          ) =>
+            report.reported_user_id,
+        )
+        .filter(
+          (
+            id,
+          ): id is string =>
+            Boolean(
               id,
-            ): id is string =>
-              Boolean(id),
-          ),
-      ),
-    ];
+            ),
+        ),
+    ),
+  ];
 
   const previousReports =
     new Map<
@@ -896,7 +1732,9 @@ export async function getReportsPageData({
   ) {
     const historyResult =
       await supabase
-        .from("reports")
+        .from(
+          "reports",
+        )
         .select(
           "reported_user_id",
         )
@@ -904,7 +1742,9 @@ export async function getReportsPageData({
           "reported_user_id",
           reportedUserIds,
         )
-        .limit(10000);
+        .limit(
+          MAX_HISTORY_ROWS,
+        );
 
     if (
       historyResult.error
@@ -929,8 +1769,10 @@ export async function getReportsPageData({
           (
             previousReports.get(
               report.reported_user_id,
-            ) ?? 0
-          ) + 1,
+            ) ??
+            0
+          ) +
+            1,
         );
       }
     }
@@ -949,7 +1791,9 @@ export async function getReportsPageData({
   const reports:
     AdminReportRow[] =
     rawReports.map(
-      (report) => {
+      (
+        report,
+      ) => {
         let target:
           ReportTarget = {
           type:
@@ -1104,6 +1948,10 @@ export async function getReportsPageData({
                 report.reported_user_id,
               )
                 ?.username ??
+              profiles.get(
+                report.reported_user_id,
+              )
+                ?.email ??
               "Reported user",
 
             content:
@@ -1123,11 +1971,92 @@ export async function getReportsPageData({
           };
         }
 
+        const reportId =
+          Number(
+            report.id,
+          );
+
+        const reporter =
+          report.reporter_id
+            ? profiles.get(
+                report.reporter_id,
+              ) ??
+              null
+            : null;
+
+        const reporterAdminId =
+          adminReporterByReportId.get(
+            reportId,
+          ) ??
+          null;
+
+        const reporterAdmin =
+          reporterAdminId
+            ? admins.get(
+                reporterAdminId,
+              ) ??
+              null
+            : null;
+
+        let reporterSource:
+          ReportReporterSource =
+          "unknown";
+
+        let reporterIdentity =
+          unknownIdentity();
+
+        if (
+          reporter
+        ) {
+          reporterSource =
+            "user";
+
+          reporterIdentity =
+            userIdentity(
+              reporter,
+            );
+        } else if (
+          reporterAdminId
+        ) {
+          reporterSource =
+            "admin";
+
+          reporterIdentity =
+            adminIdentity(
+              reporterAdmin,
+            );
+
+          /*
+           * Even if the admins lookup
+           * unexpectedly fails, retain
+           * the ID from the audit log.
+           *
+           * This still allows the UI to
+           * correctly identify the case
+           * as an administrator flag
+           * instead of a user report.
+           */
+          if (
+            !reporterIdentity.id
+          ) {
+            reporterIdentity.id =
+              reporterAdminId;
+          }
+        } else if (
+          isAutomatedModerationReport(
+            report.reason,
+          )
+        ) {
+          reporterSource =
+            "system";
+
+          reporterIdentity =
+            systemIdentity();
+        }
+
         return {
           id:
-            Number(
-              report.id,
-            ),
+            reportId,
 
           reporter_id:
             report.reporter_id,
@@ -1167,13 +2096,16 @@ export async function getReportsPageData({
           created_at:
             report.created_at,
 
-          reporter:
-            report.reporter_id
-              ? profiles.get(
-                  report.reporter_id,
-                ) ??
-                null
-              : null,
+          reporter,
+
+          reporter_admin:
+            reporterAdmin,
+
+          reporter_source:
+            reporterSource,
+
+          reporter_identity:
+            reporterIdentity,
 
           reported_user:
             report.reported_user_id
@@ -1261,7 +2193,9 @@ export async function getReportsPageData({
         reviewingResult.error,
         resolvedTodayResult.error,
         ...relationErrors,
-      ].filter(Boolean)
-        .length > 0,
+      ].filter(
+        Boolean,
+      ).length >
+      0,
   };
 }

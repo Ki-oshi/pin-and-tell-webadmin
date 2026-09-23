@@ -67,16 +67,63 @@ function normalizePolicyIdentifier(
     .replace(
       /[\s.-]+/g,
       "_",
+    )
+    .replace(
+      /_+/g,
+      "_",
     );
 }
 
 /*
- * Cookie Policy and GDPR are intentionally
- * excluded from the admin settings UI.
+ * TERMS OF SERVICE
  *
- * We do not delete their database records.
- * They simply will not be loaded into the
- * editable Policies section.
+ * PIN & TELL uses "Terms and Conditions"
+ * as the authoritative terms document.
+ *
+ * Any old Terms of Service record remains
+ * in platform_settings for compatibility /
+ * historical purposes, but is intentionally
+ * hidden from the admin policy editor.
+ */
+function isTermsOfServiceIdentifier(
+  value:
+    string,
+): boolean {
+  const normalized =
+    normalizePolicyIdentifier(
+      value,
+    );
+
+  return (
+    normalized ===
+      "terms_of_service" ||
+    normalized ===
+      "term_of_service" ||
+    normalized ===
+      "terms_service" ||
+    normalized ===
+      "tos" ||
+    normalized.startsWith(
+      "terms_of_service_",
+    ) ||
+    normalized.endsWith(
+      "_terms_of_service",
+    )
+  );
+}
+
+/*
+ * These policy records are intentionally
+ * excluded from the admin settings UI:
+ *
+ * - Cookie Policy
+ * - GDPR-related settings
+ * - Terms of Service
+ *
+ * Their database rows are NOT deleted.
+ *
+ * Terms and Conditions remains visible
+ * and is the authoritative terms document.
  */
 function isExcludedPolicy(
   setting:
@@ -95,14 +142,37 @@ function isExcludedPolicy(
   const combined =
     `${key} ${group}`;
 
-  return (
+  if (
     combined.includes(
       "cookie",
-    ) ||
+    )
+  ) {
+    return true;
+  }
+
+  if (
     combined.includes(
       "gdpr",
     )
-  );
+  ) {
+    return true;
+  }
+
+  /*
+   * Prefer checking the actual setting
+   * key for Terms of Service so that
+   * generic legal groups do not cause
+   * Terms and Conditions to disappear.
+   */
+  if (
+    isTermsOfServiceIdentifier(
+      setting.key,
+    )
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 function isPolicySetting(
@@ -295,8 +365,14 @@ export async function getAdminSettingsPageData(): Promise<AdminSettingsPageData>
    * Only actual policy/legal records are
    * exposed here.
    *
-   * Cookie-related and GDPR-related rows
-   * are explicitly filtered out.
+   * The following remain hidden without
+   * deleting their database rows:
+   *
+   * - Cookie-related records
+   * - GDPR-related records
+   * - Legacy Terms of Service
+   *
+   * Terms and Conditions remains visible.
    */
   const policies:
     AdminPolicySetting[] =

@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useRef,
 } from "react";
 
 import {
@@ -13,6 +14,7 @@ import StarterKit from "@tiptap/starter-kit";
 
 import {
   Bold,
+  Heading1,
   Heading2,
   Heading3,
   Italic,
@@ -28,22 +30,65 @@ import {
 
 type Props = {
   value: string;
-
-  disabled?:
-    boolean;
-
-  onChange:
-    (
-      value:
-        string,
-    ) => void;
+  disabled?: boolean;
+  onChange: (
+    value: string,
+  ) => void;
 };
+
+/* =========================================================
+   HTML SOURCE DETECTION
+========================================================= */
+
+/*
+ * The admin sometimes pastes formatted policy HTML directly
+ * into the rich-text field, for example:
+ *
+ * <h1>Privacy Policy</h1>
+ * <p>...</p>
+ *
+ * A normal contenteditable treats that as literal text.
+ *
+ * We detect supported HTML source and let TipTap parse it
+ * into actual rich-text nodes.
+ */
+const HTML_SOURCE_PATTERN =
+  /<\/?(?:h1|h2|h3|p|ul|ol|li|strong|b|em|i|s|strike|blockquote|hr|br)\b[^>]*>/i;
+
+function looksLikeHtmlSource(
+  value: string,
+): boolean {
+  const text =
+    value.trim();
+
+  if (!text) {
+    return false;
+  }
+
+  return HTML_SOURCE_PATTERN.test(
+    text,
+  );
+}
+
+/* =========================================================
+   MAIN EDITOR
+========================================================= */
 
 export default function RichTextEditor({
   value,
   disabled = false,
   onChange,
 }: Props) {
+  /*
+   * Tracks the latest HTML already synchronized with the
+   * editor so normal typing does not cause the parent value
+   * to be continuously re-imported.
+   */
+  const lastSyncedValue =
+    useRef<string | null>(
+      null,
+    );
+
   const editor =
     useEditor({
       immediatelyRender:
@@ -56,6 +101,7 @@ export default function RichTextEditor({
         StarterKit.configure({
           heading: {
             levels: [
+              1,
               2,
               3,
             ],
@@ -68,97 +114,256 @@ export default function RichTextEditor({
 
       editorProps: {
         attributes: {
-          class:
-            [
-              "min-h-[260px]",
-              "px-4",
-              "py-4",
-              "text-xs",
-              "leading-6",
-              "text-slate-800",
-              "outline-none",
-              "[&_p]:my-2",
-              "[&_h2]:mb-2",
-              "[&_h2]:mt-5",
-              "[&_h2]:text-lg",
-              "[&_h2]:font-semibold",
-              "[&_h2]:text-slate-950",
-              "[&_h3]:mb-2",
-              "[&_h3]:mt-4",
-              "[&_h3]:text-sm",
-              "[&_h3]:font-semibold",
-              "[&_h3]:text-slate-900",
-              "[&_ul]:my-3",
-              "[&_ul]:list-disc",
-              "[&_ul]:pl-6",
-              "[&_ol]:my-3",
-              "[&_ol]:list-decimal",
-              "[&_ol]:pl-6",
-              "[&_li]:my-1",
-              "[&_blockquote]:my-4",
-              "[&_blockquote]:border-l-2",
-              "[&_blockquote]:border-[#CC3A67]",
-              "[&_blockquote]:pl-4",
-              "[&_blockquote]:italic",
-              "[&_blockquote]:text-slate-500",
-              "[&_hr]:my-5",
-              "[&_hr]:border-slate-200",
-              "[&_strong]:font-semibold",
-            ].join(
-              " ",
-            ),
+          class: [
+            "min-h-[320px]",
+            "px-5",
+            "py-5",
+            "text-xs",
+            "leading-6",
+            "text-slate-800",
+            "outline-none",
+
+            /*
+             * Paragraphs
+             */
+            "[&_p]:my-2.5",
+
+            /*
+             * H1
+             */
+            "[&_h1]:mb-3",
+            "[&_h1]:mt-6",
+            "[&_h1]:text-xl",
+            "[&_h1]:font-bold",
+            "[&_h1]:leading-tight",
+            "[&_h1]:tracking-[-0.02em]",
+            "[&_h1]:text-slate-950",
+
+            /*
+             * H2
+             */
+            "[&_h2]:mb-2",
+            "[&_h2]:mt-6",
+            "[&_h2]:text-base",
+            "[&_h2]:font-semibold",
+            "[&_h2]:leading-tight",
+            "[&_h2]:text-slate-950",
+
+            /*
+             * H3
+             */
+            "[&_h3]:mb-2",
+            "[&_h3]:mt-5",
+            "[&_h3]:text-sm",
+            "[&_h3]:font-semibold",
+            "[&_h3]:text-slate-900",
+
+            /*
+             * Lists
+             */
+            "[&_ul]:my-3",
+            "[&_ul]:list-disc",
+            "[&_ul]:space-y-1",
+            "[&_ul]:pl-6",
+
+            "[&_ol]:my-3",
+            "[&_ol]:list-decimal",
+            "[&_ol]:space-y-1",
+            "[&_ol]:pl-6",
+
+            "[&_li]:pl-1",
+
+            /*
+             * Quote
+             */
+            "[&_blockquote]:my-4",
+            "[&_blockquote]:border-l-2",
+            "[&_blockquote]:border-[#CC3A67]",
+            "[&_blockquote]:bg-[#CC3A67]/[0.03]",
+            "[&_blockquote]:px-4",
+            "[&_blockquote]:py-2",
+            "[&_blockquote]:italic",
+            "[&_blockquote]:text-slate-600",
+
+            /*
+             * Horizontal rule
+             */
+            "[&_hr]:my-6",
+            "[&_hr]:border-0",
+            "[&_hr]:border-t",
+            "[&_hr]:border-slate-200",
+
+            /*
+             * Inline formatting
+             */
+            "[&_strong]:font-semibold",
+            "[&_strong]:text-slate-900",
+          ].join(
+            " ",
+          ),
         },
       },
 
+      /*
+       * =====================================================
+       * CONTENT UPDATE
+       * =====================================================
+       *
+       * Normally, store TipTap HTML.
+       *
+       * If the editor contains literal HTML source because
+       * the administrator pasted:
+       *
+       * <h2>Title</h2>
+       *
+       * convert that source into actual rich text first.
+       */
       onUpdate({
         editor:
           currentEditor,
       }) {
-        onChange(
+        const plainText =
           currentEditor
-            .getHTML(),
+            .getText({
+              blockSeparator:
+                "\n",
+            })
+            .trim();
+
+        if (
+          looksLikeHtmlSource(
+            plainText,
+          )
+        ) {
+          currentEditor
+            .commands
+            .setContent(
+              plainText,
+              {
+                emitUpdate:
+                  false,
+              },
+            );
+
+          const convertedHtml =
+            currentEditor
+              .getHTML();
+
+          lastSyncedValue.current =
+            convertedHtml;
+
+          onChange(
+            convertedHtml,
+          );
+
+          return;
+        }
+
+        const html =
+          currentEditor
+            .getHTML();
+
+        lastSyncedValue.current =
+          html;
+
+        onChange(
+          html,
         );
       },
     });
 
+  /* =========================================================
+     EXTERNAL VALUE SYNCHRONIZATION
+  ========================================================= */
+
   /*
-   * Synchronize the editor when the
-   * parent resets or replaces the
-   * stored policy value.
+   * Synchronize the editor whenever the parent resets or
+   * replaces the stored policy value.
+   *
+   * This also repairs policy values that were previously
+   * saved as literal HTML text.
+   *
+   * Example of an old bad value rendered by TipTap:
+   *
+   * <h1>Privacy Policy</h1>
+   *
+   * If editor.getText() contains those literal tags, we
+   * parse that text again as HTML and return the normalized
+   * TipTap HTML to the parent.
    */
   useEffect(() => {
-    if (
-      !editor
-    ) {
+    if (!editor) {
       return;
     }
 
-    const currentHtml =
-      editor.getHTML();
-
     if (
-      currentHtml ===
+      lastSyncedValue.current ===
       value
     ) {
       return;
     }
 
+    lastSyncedValue.current =
+      value;
+
     editor.commands.setContent(
-      value,
+      value || "",
       {
         emitUpdate:
           false,
       },
     );
+
+    const editorText =
+      editor
+        .getText({
+          blockSeparator:
+            "\n",
+        })
+        .trim();
+
+    /*
+     * Existing malformed policy content may contain encoded
+     * / literal HTML inside normal paragraphs.
+     *
+     * The text representation exposes those tags, which lets
+     * us safely pass them back through TipTap's parser.
+     */
+    if (
+      looksLikeHtmlSource(
+        editorText,
+      )
+    ) {
+      editor.commands.setContent(
+        editorText,
+        {
+          emitUpdate:
+            false,
+        },
+      );
+
+      const normalizedHtml =
+        editor.getHTML();
+
+      lastSyncedValue.current =
+        normalizedHtml;
+
+      onChange(
+        normalizedHtml,
+      );
+    }
   }, [
     editor,
     value,
+    onChange,
   ]);
 
+  /* =========================================================
+     ENABLE / DISABLE
+  ========================================================= */
+
   useEffect(() => {
-    if (
-      !editor
-    ) {
+    if (!editor) {
       return;
     }
 
@@ -170,14 +375,16 @@ export default function RichTextEditor({
     disabled,
   ]);
 
-  if (
-    !editor
-  ) {
+  /* =========================================================
+     LOADING
+  ========================================================= */
+
+  if (!editor) {
     return (
       <div
         className="
           flex
-          min-h-[260px]
+          min-h-[320px]
           items-center
           justify-center
           border
@@ -192,6 +399,10 @@ export default function RichTextEditor({
     );
   }
 
+  /* =========================================================
+     RENDER
+  ========================================================= */
+
   return (
     <div
       className={`
@@ -199,6 +410,7 @@ export default function RichTextEditor({
         border
         bg-white
         transition
+
         ${
           disabled
             ? "border-slate-200 opacity-70"
@@ -222,11 +434,14 @@ export default function RichTextEditor({
           p-2
         "
       >
+        {/* UNDO */}
+
         <ToolbarButton
           label="Undo"
           disabled={
             disabled ||
-            !editor.can()
+            !editor
+              .can()
               .chain()
               .focus()
               .undo()
@@ -245,11 +460,14 @@ export default function RichTextEditor({
           />
         </ToolbarButton>
 
+        {/* REDO */}
+
         <ToolbarButton
           label="Redo"
           disabled={
             disabled ||
-            !editor.can()
+            !editor
+              .can()
               .chain()
               .focus()
               .redo()
@@ -269,6 +487,8 @@ export default function RichTextEditor({
         </ToolbarButton>
 
         <ToolbarDivider />
+
+        {/* BOLD */}
 
         <ToolbarButton
           label="Bold"
@@ -293,6 +513,8 @@ export default function RichTextEditor({
           />
         </ToolbarButton>
 
+        {/* ITALIC */}
+
         <ToolbarButton
           label="Italic"
           active={
@@ -315,6 +537,8 @@ export default function RichTextEditor({
             size={14}
           />
         </ToolbarButton>
+
+        {/* STRIKETHROUGH */}
 
         <ToolbarButton
           label="Strikethrough"
@@ -340,6 +564,40 @@ export default function RichTextEditor({
         </ToolbarButton>
 
         <ToolbarDivider />
+
+        {/* HEADING 1 */}
+
+        <ToolbarButton
+          label="Heading 1"
+          active={
+            editor.isActive(
+              "heading",
+              {
+                level:
+                  1,
+              },
+            )
+          }
+          disabled={
+            disabled
+          }
+          onClick={() =>
+            editor
+              .chain()
+              .focus()
+              .toggleHeading({
+                level:
+                  1,
+              })
+              .run()
+          }
+        >
+          <Heading1
+            size={14}
+          />
+        </ToolbarButton>
+
+        {/* HEADING 2 */}
 
         <ToolbarButton
           label="Heading 2"
@@ -370,6 +628,8 @@ export default function RichTextEditor({
             size={14}
           />
         </ToolbarButton>
+
+        {/* HEADING 3 */}
 
         <ToolbarButton
           label="Heading 3"
@@ -403,6 +663,8 @@ export default function RichTextEditor({
 
         <ToolbarDivider />
 
+        {/* BULLET LIST */}
+
         <ToolbarButton
           label="Bullet List"
           active={
@@ -426,6 +688,8 @@ export default function RichTextEditor({
           />
         </ToolbarButton>
 
+        {/* NUMBERED LIST */}
+
         <ToolbarButton
           label="Numbered List"
           active={
@@ -448,6 +712,8 @@ export default function RichTextEditor({
             size={14}
           />
         </ToolbarButton>
+
+        {/* BLOCKQUOTE */}
 
         <ToolbarButton
           label="Blockquote"
@@ -474,6 +740,8 @@ export default function RichTextEditor({
 
         <ToolbarDivider />
 
+        {/* HORIZONTAL RULE */}
+
         <ToolbarButton
           label="Horizontal Rule"
           disabled={
@@ -491,6 +759,8 @@ export default function RichTextEditor({
             size={14}
           />
         </ToolbarButton>
+
+        {/* CLEAR FORMATTING */}
 
         <ToolbarButton
           label="Clear Formatting"
@@ -558,9 +828,9 @@ export default function RichTextEditor({
         >
           {
             editor
-                .getText()
-                .length
-            }
+              .getText()
+              .length
+          }{" "}
           characters
         </p>
       </div>
@@ -610,9 +880,8 @@ function ToolbarButton({
         event,
       ) => {
         /*
-         * Prevent the editor from losing
-         * its selection when clicking a
-         * formatting button.
+         * Prevent the editor from losing its selection when
+         * clicking a formatting button.
          */
         event.preventDefault();
       }}
@@ -628,11 +897,13 @@ function ToolbarButton({
         border
         text-slate-600
         transition
+
         ${
           active
             ? "border-[#FDC1C9] bg-[#A92F56] text-white"
             : "border-transparent bg-transparent hover:border-slate-200 hover:bg-white"
         }
+
         disabled:cursor-not-allowed
         disabled:opacity-30
       `}

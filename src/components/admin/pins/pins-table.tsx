@@ -6,6 +6,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useTransition,
 } from "react";
 
 import {
@@ -13,12 +14,15 @@ import {
   Check,
   Copy,
   Eye,
+  Flag,
   Heart,
   ImageIcon,
+  Loader2,
   MapPin,
   MessageCircle,
   Navigation,
   Search,
+  ShieldAlert,
   ShieldCheck,
   X,
 } from "lucide-react";
@@ -31,6 +35,14 @@ import {
   useRouter,
 } from "nextjs-toploader/app";
 
+import {
+  flagPinForReviewAction,
+} from "@/app/admin/(protected)/reports/actions";
+
+import type {
+  FlagPinInput,
+} from "@/app/admin/(protected)/reports/actions";
+
 import type {
   AdminPinRow,
 } from "@/lib/admin/pins";
@@ -38,8 +50,7 @@ import type {
 type PinsTableProps = {
   pins: AdminPinRow[];
 
-  categories:
-    string[];
+  categories: string[];
 
   pagination: {
     page: number;
@@ -48,15 +59,50 @@ type PinsTableProps = {
     pageCount: number;
   };
 
-  initialQuery:
-    string;
-
-  initialCategory:
-    string;
-
-  initialSort:
-    string;
+  initialQuery: string;
+  initialCategory: string;
+  initialSort: string;
 };
+
+type FlagType =
+  FlagPinInput["type"];
+
+type FeedbackMessage = {
+  type:
+    | "success"
+    | "error";
+  text: string;
+};
+
+const FLAG_TYPES: Array<{
+  value: FlagType;
+  label: string;
+}> = [
+  {
+    value: "spam",
+    label: "Spam",
+  },
+  {
+    value: "harassment",
+    label: "Harassment",
+  },
+  {
+    value: "inappropriate",
+    label: "Inappropriate",
+  },
+  {
+    value: "copyright",
+    label: "Copyright",
+  },
+  {
+    value: "misinformation",
+    label: "Misinformation",
+  },
+  {
+    value: "other",
+    label: "Other",
+  },
+];
 
 function formatDate(
   value:
@@ -68,9 +114,7 @@ function formatDate(
   }
 
   const date =
-    new Date(
-      value,
-    );
+    new Date(value);
 
   if (
     Number.isNaN(
@@ -83,17 +127,10 @@ function formatDate(
   return new Intl.DateTimeFormat(
     "en-PH",
     {
-      month:
-        "short",
-
-      day:
-        "numeric",
-
-      year:
-        "numeric",
-
-      timeZone:
-        "Asia/Manila",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      timeZone: "Asia/Manila",
     },
   ).format(date);
 }
@@ -108,9 +145,7 @@ function formatDateTime(
   }
 
   const date =
-    new Date(
-      value,
-    );
+    new Date(value);
 
   if (
     Number.isNaN(
@@ -123,30 +158,18 @@ function formatDateTime(
   return new Intl.DateTimeFormat(
     "en-PH",
     {
-      month:
-        "short",
-
-      day:
-        "numeric",
-
-      year:
-        "numeric",
-
-      hour:
-        "numeric",
-
-      minute:
-        "2-digit",
-
-      timeZone:
-        "Asia/Manila",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: "Asia/Manila",
     },
   ).format(date);
 }
 
 function creatorName(
-  pin:
-    AdminPinRow,
+  pin: AdminPinRow,
 ) {
   return (
     pin.creator
@@ -162,12 +185,9 @@ function creatorName(
 }
 
 function creatorInitials(
-  pin:
-    AdminPinRow,
+  pin: AdminPinRow,
 ) {
-  return creatorName(
-    pin,
-  )
+  return creatorName(pin)
     .split(/\s+/)
     .map(
       (part) =>
@@ -198,8 +218,7 @@ function CategoryBadge({
         text-[#A92F56]
       "
     >
-      {value ||
-        "General"}
+      {value || "General"}
     </span>
   );
 }
@@ -231,20 +250,68 @@ export default function PinsTable({
   const [
     selectedPin,
     setSelectedPin,
-  ] =
-    useState<
-      AdminPinRow | null
-    >(null);
+  ] = useState<
+    AdminPinRow | null
+  >(null);
 
   const [
     copied,
     setCopied,
-  ] =
-    useState<
-      "id" |
-      "coordinates" |
-      null
-    >(null);
+  ] = useState<
+    | "id"
+    | "coordinates"
+    | null
+  >(null);
+
+  const [
+    flagPin,
+    setFlagPin,
+  ] = useState<
+    AdminPinRow | null
+  >(null);
+
+  const [
+    flagType,
+    setFlagType,
+  ] = useState<FlagType>(
+    "inappropriate",
+  );
+
+  const [
+    flagReason,
+    setFlagReason,
+  ] = useState("");
+
+  const [
+    flagDetails,
+    setFlagDetails,
+  ] = useState("");
+
+  const [
+    flagError,
+    setFlagError,
+  ] = useState<
+    string | null
+  >(null);
+
+  const [
+    feedback,
+    setFeedback,
+  ] = useState<
+    FeedbackMessage | null
+  >(null);
+
+  const [
+    locallyFlaggedPinIds,
+    setLocallyFlaggedPinIds,
+  ] = useState<Set<number>>(
+    () => new Set<number>(),
+  );
+
+  const [
+    isFlagging,
+    startFlagTransition,
+  ] = useTransition();
 
   useEffect(() => {
     const frame =
@@ -276,9 +343,7 @@ export default function PinsTable({
           const cleaned =
             query.trim();
 
-          if (
-            cleaned
-          ) {
+          if (cleaned) {
             params.set(
               "q",
               cleaned,
@@ -322,7 +387,8 @@ export default function PinsTable({
 
   useEffect(() => {
     if (
-      !selectedPin
+      !selectedPin &&
+      !flagPin
     ) {
       return;
     }
@@ -336,17 +402,23 @@ export default function PinsTable({
       "hidden";
 
     function closeOnEscape(
-      event:
-        KeyboardEvent,
+      event: KeyboardEvent,
     ) {
       if (
-        event.key ===
-        "Escape"
+        event.key !==
+        "Escape" ||
+        isFlagging
       ) {
-        setSelectedPin(
-          null,
-        );
+        return;
       }
+
+      if (flagPin) {
+        setFlagPin(null);
+        setFlagError(null);
+        return;
+      }
+
+      setSelectedPin(null);
     }
 
     document.addEventListener(
@@ -366,6 +438,8 @@ export default function PinsTable({
     };
   }, [
     selectedPin,
+    flagPin,
+    isFlagging,
   ]);
 
   const showingText =
@@ -397,11 +471,33 @@ export default function PinsTable({
       pagination,
     ]);
 
+  function getOpenReportCount(
+    pin: AdminPinRow,
+  ) {
+    return Math.max(
+      pin.open_reports_count,
+      locallyFlaggedPinIds.has(
+        pin.id,
+      )
+        ? 1
+        : 0,
+    );
+  }
+
+  function isPinUnderReview(
+    pin: AdminPinRow,
+  ) {
+    return (
+      getOpenReportCount(
+        pin,
+      ) > 0
+    );
+  }
+
   function updateParam(
     key: string,
     value: string,
-    defaultValue:
-      string,
+    defaultValue: string,
   ) {
     const params =
       new URLSearchParams(
@@ -412,9 +508,7 @@ export default function PinsTable({
       value ===
       defaultValue
     ) {
-      params.delete(
-        key,
-      );
+      params.delete(key);
     } else {
       params.set(
         key,
@@ -422,9 +516,7 @@ export default function PinsTable({
       );
     }
 
-    params.delete(
-      "page",
-    );
+    params.delete("page");
 
     const next =
       params.toString();
@@ -461,26 +553,134 @@ export default function PinsTable({
     try {
       await navigator
         .clipboard
-        .writeText(
-          value,
-        );
+        .writeText(value);
 
-      setCopied(
-        type,
-      );
+      setCopied(type);
 
       window.setTimeout(
         () =>
-          setCopied(
-            null,
-          ),
+          setCopied(null),
         1500,
       );
     } catch {
-      setCopied(
-        null,
-      );
+      setCopied(null);
     }
+  }
+
+  function openFlagModal(
+    pin: AdminPinRow,
+  ) {
+    if (
+      isPinUnderReview(pin)
+    ) {
+      setFeedback({
+        type: "error",
+        text:
+          `Pin #${pin.id} already has an open moderation report. Review the existing case instead of creating a duplicate.`,
+      });
+
+      return;
+    }
+
+    setFeedback(null);
+    setFlagError(null);
+    setFlagType(
+      "inappropriate",
+    );
+    setFlagReason("");
+    setFlagDetails("");
+    setFlagPin(pin);
+  }
+
+  function closeFlagModal() {
+    if (isFlagging) {
+      return;
+    }
+
+    setFlagPin(null);
+    setFlagError(null);
+  }
+
+  function submitFlag() {
+    if (
+      !flagPin ||
+      isFlagging
+    ) {
+      return;
+    }
+
+    const cleanedReason =
+      flagReason.trim();
+
+    if (
+      cleanedReason.length <
+      3
+    ) {
+      setFlagError(
+        "Please provide a clear reason for flagging this pin.",
+      );
+
+      return;
+    }
+
+    const pinToFlag =
+      flagPin;
+
+    setFlagError(null);
+    setFeedback(null);
+
+    startFlagTransition(
+      async () => {
+        const result =
+          await flagPinForReviewAction(
+            {
+              pinId:
+                pinToFlag.id,
+              type:
+                flagType,
+              reason:
+                cleanedReason,
+              details:
+                flagDetails.trim(),
+            },
+          );
+
+        if (
+          !result.success
+        ) {
+          setFlagError(
+            result.message,
+          );
+          return;
+        }
+
+        setLocallyFlaggedPinIds(
+          (current) => {
+            const next =
+              new Set(
+                current,
+              );
+
+            next.add(
+              pinToFlag.id,
+            );
+
+            return next;
+          },
+        );
+
+        setFeedback({
+          type: "success",
+          text: result.message,
+        });
+
+        setFlagPin(null);
+        setFlagReason("");
+        setFlagDetails("");
+
+        router.refresh();
+      },
+    );
   }
 
   return (
@@ -492,6 +692,74 @@ export default function PinsTable({
           bg-white
         "
       >
+        {feedback && (
+          <div
+            className={`
+              flex
+              items-start
+              justify-between
+              gap-4
+              border-b
+              px-4
+              py-3
+              text-xs
+              ${
+                feedback.type ===
+                "success"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  : "border-amber-200 bg-amber-50 text-amber-800"
+              }
+            `}
+          >
+            <div
+              className="
+                flex
+                items-start
+                gap-2
+              "
+            >
+              {feedback.type ===
+              "success" ? (
+                <ShieldCheck
+                  size={15}
+                  className="
+                    mt-0.5
+                    shrink-0
+                  "
+                />
+              ) : (
+                <AlertTriangle
+                  size={15}
+                  className="
+                    mt-0.5
+                    shrink-0
+                  "
+                />
+              )}
+
+              <p>
+                {feedback.text}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                setFeedback(null)
+              }
+              className="
+                shrink-0
+                opacity-60
+                transition
+                hover:opacity-100
+              "
+              aria-label="Dismiss message"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
         {/* Toolbar */}
         <div
           className="
@@ -526,16 +794,12 @@ export default function PinsTable({
             />
 
             <input
-              value={
-                query
-              }
+              value={query}
               onChange={(
                 event,
               ) =>
                 setQuery(
-                  event
-                    .target
-                    .value,
+                  event.target.value,
                 )
               }
               placeholder="Search title, description, creator or subcategory..."
@@ -563,9 +827,7 @@ export default function PinsTable({
               <button
                 type="button"
                 onClick={() =>
-                  setQuery(
-                    "",
-                  )
+                  setQuery("")
                 }
                 aria-label="Clear search"
                 className="
@@ -582,9 +844,7 @@ export default function PinsTable({
                   hover:text-slate-700
                 "
               >
-                <X
-                  size={14}
-                />
+                <X size={14} />
               </button>
             )}
           </div>
@@ -606,9 +866,7 @@ export default function PinsTable({
               ) =>
                 updateParam(
                   "category",
-                  event
-                    .target
-                    .value,
+                  event.target.value,
                   "all",
                 )
               }
@@ -632,20 +890,12 @@ export default function PinsTable({
               </option>
 
               {categories.map(
-                (
-                  category,
-                ) => (
+                (category) => (
                   <option
-                    key={
-                      category
-                    }
-                    value={
-                      category
-                    }
+                    key={category}
+                    value={category}
                   >
-                    {
-                      category
-                    }
+                    {category}
                   </option>
                 ),
               )}
@@ -660,9 +910,7 @@ export default function PinsTable({
               ) =>
                 updateParam(
                   "sort",
-                  event
-                    .target
-                    .value,
+                  event.target.value,
                   "newest",
                 )
               }
@@ -709,8 +957,7 @@ export default function PinsTable({
         </div>
 
         {/* Table */}
-        {pins.length >
-        0 ? (
+        {pins.length > 0 ? (
           <div
             className="
               overflow-x-auto
@@ -719,7 +966,7 @@ export default function PinsTable({
             <table
               className="
                 w-full
-                min-w-[1050px]
+                min-w-[1180px]
                 border-collapse
                 text-left
               "
@@ -739,16 +986,11 @@ export default function PinsTable({
                     "Engagement",
                     "Reports",
                     "Created",
-                    "",
+                    "Actions",
                   ].map(
-                    (
-                      heading,
-                    ) => (
+                    (heading) => (
                       <th
-                        key={
-                          heading ||
-                          "action"
-                        }
+                        key={heading}
                         className="
                           px-4
                           py-3
@@ -761,9 +1003,7 @@ export default function PinsTable({
                           last:pr-5
                         "
                       >
-                        {
-                          heading
-                        }
+                        {heading}
                       </th>
                     ),
                   )}
@@ -772,338 +1012,409 @@ export default function PinsTable({
 
               <tbody>
                 {pins.map(
-                  (pin) => (
-                    <tr
-                      key={
-                        pin.id
-                      }
-                      className="
-                        border-b
-                        border-slate-100
-                        transition-colors
-                        last:border-b-0
-                        hover:bg-slate-50/60
-                      "
-                    >
-                      <td
+                  (pin) => {
+                    const openReportCount =
+                      getOpenReportCount(
+                        pin,
+                      );
+
+                    const underReview =
+                      openReportCount >
+                      0;
+
+                    return (
+                      <tr
+                        key={pin.id}
                         className="
-                          px-5
-                          py-3.5
+                          border-b
+                          border-slate-100
+                          transition-colors
+                          last:border-b-0
+                          hover:bg-slate-50/60
                         "
                       >
-                        <div
+                        <td
                           className="
-                            flex
-                            items-center
-                            gap-3
+                            px-5
+                            py-3.5
                           "
                         >
                           <div
                             className="
                               flex
-                              h-9
-                              w-9
-                              shrink-0
                               items-center
-                              justify-center
-                              bg-[#A92F56]/[0.08]
-                              text-[#A92F56]
+                              gap-3
                             "
                           >
-                            <MapPin
-                              size={16}
-                            />
-                          </div>
-
-                          <div
-                            className="
-                              min-w-0
-                            "
-                          >
-                            <p
+                            <div
                               className="
-                                max-w-[260px]
-                                truncate
-                                text-xs
-                                font-semibold
-                                text-slate-900
+                                flex
+                                h-9
+                                w-9
+                                shrink-0
+                                items-center
+                                justify-center
+                                bg-[#A92F56]/[0.08]
+                                text-[#A92F56]
                               "
                             >
-                              {
-                                pin.title
-                              }
-                            </p>
+                              <MapPin
+                                size={16}
+                              />
+                            </div>
 
-                            <p
+                            <div
                               className="
-                                mt-0.5
-                                max-w-[270px]
-                                truncate
-                                text-[10px]
-                                text-slate-400
+                                min-w-0
                               "
                             >
-                              {pin.subcategory ||
-                                `${pin.latitude.toFixed(
-                                  5,
-                                )}, ${pin.longitude.toFixed(
-                                  5,
-                                )}`}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
+                              <p
+                                className="
+                                  max-w-[260px]
+                                  truncate
+                                  text-xs
+                                  font-semibold
+                                  text-slate-900
+                                "
+                              >
+                                {pin.title}
+                              </p>
 
-                      <td
-                        className="
-                          px-4
-                          py-3.5
-                        "
-                      >
-                        <CategoryBadge
-                          value={
-                            pin.category
-                          }
-                        />
-                      </td>
-
-                      <td
-                        className="
-                          px-4
-                          py-3.5
-                        "
-                      >
-                        <div
-                          className="
-                            flex
-                            items-center
-                            gap-2.5
-                          "
-                        >
-                          <div
-                            className="
-                              flex
-                              h-7
-                              w-7
-                              shrink-0
-                              items-center
-                              justify-center
-                              bg-slate-100
-                              text-[9px]
-                              font-semibold
-                              text-slate-600
-                            "
-                          >
-                            {creatorInitials(
-                              pin,
-                            )}
-                          </div>
-
-                          <div
-                            className="
-                              min-w-0
-                            "
-                          >
-                            <p
-                              className="
-                                max-w-[150px]
-                                truncate
-                                text-[11px]
-                                font-medium
-                                text-slate-700
-                              "
-                            >
-                              {creatorName(
-                                pin,
-                              )}
-                            </p>
-
-                            {pin.creator
-                              ?.username && (
                               <p
                                 className="
                                   mt-0.5
+                                  max-w-[270px]
                                   truncate
-                                  text-[9px]
+                                  text-[10px]
                                   text-slate-400
                                 "
                               >
-                                @
-                                {
-                                  pin
-                                    .creator
-                                    .username
-                                }
+                                {pin.subcategory ||
+                                  `${pin.latitude.toFixed(
+                                    5,
+                                  )}, ${pin.longitude.toFixed(
+                                    5,
+                                  )}`}
                               </p>
-                            )}
+                            </div>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      <td
-                        className="
-                          px-4
-                          py-3.5
-                        "
-                      >
-                        <div
+                        <td
                           className="
-                            flex
-                            items-center
-                            gap-4
+                            px-4
+                            py-3.5
+                          "
+                        >
+                          <CategoryBadge
+                            value={
+                              pin.category
+                            }
+                          />
+                        </td>
+
+                        <td
+                          className="
+                            px-4
+                            py-3.5
+                          "
+                        >
+                          <div
+                            className="
+                              flex
+                              items-center
+                              gap-2.5
+                            "
+                          >
+                            <div
+                              className="
+                                flex
+                                h-7
+                                w-7
+                                shrink-0
+                                items-center
+                                justify-center
+                                bg-slate-100
+                                text-[9px]
+                                font-semibold
+                                text-slate-600
+                              "
+                            >
+                              {creatorInitials(
+                                pin,
+                              )}
+                            </div>
+
+                            <div
+                              className="
+                                min-w-0
+                              "
+                            >
+                              <p
+                                className="
+                                  max-w-[150px]
+                                  truncate
+                                  text-[11px]
+                                  font-medium
+                                  text-slate-700
+                                "
+                              >
+                                {creatorName(
+                                  pin,
+                                )}
+                              </p>
+
+                              {pin.creator
+                                ?.username && (
+                                <p
+                                  className="
+                                    mt-0.5
+                                    truncate
+                                    text-[9px]
+                                    text-slate-400
+                                  "
+                                >
+                                  @
+                                  {
+                                    pin.creator
+                                      .username
+                                  }
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        <td
+                          className="
+                            px-4
+                            py-3.5
+                          "
+                        >
+                          <div
+                            className="
+                              flex
+                              items-center
+                              gap-4
+                              text-[11px]
+                              text-slate-500
+                            "
+                          >
+                            <span
+                              className="
+                                flex
+                                items-center
+                                gap-1
+                              "
+                              title="Likes"
+                            >
+                              <Heart
+                                size={12}
+                              />
+                              {
+                                pin.likes_count
+                              }
+                            </span>
+
+                            <span
+                              className="
+                                flex
+                                items-center
+                                gap-1
+                              "
+                              title="Comments"
+                            >
+                              <MessageCircle
+                                size={12}
+                              />
+                              {
+                                pin.comments_count
+                              }
+                            </span>
+
+                            <span
+                              className="
+                                flex
+                                items-center
+                                gap-1
+                              "
+                              title="Vouches"
+                            >
+                              <ShieldCheck
+                                size={12}
+                              />
+                              {
+                                pin.vouches_count
+                              }
+                            </span>
+                          </div>
+                        </td>
+
+                        <td
+                          className="
+                            px-4
+                            py-3.5
+                          "
+                        >
+                          {underReview ? (
+                            <Link
+                              href={`/admin/reports?pin=${pin.id}`}
+                              className="
+                                inline-flex
+                                items-center
+                                gap-1.5
+                                border
+                                border-amber-200
+                                bg-amber-50
+                                px-2
+                                py-1
+                                text-[10px]
+                                font-semibold
+                                text-amber-700
+                                transition
+                                hover:bg-amber-100
+                              "
+                              title="Open associated reports"
+                            >
+                              <AlertTriangle
+                                size={11}
+                              />
+
+                              {openReportCount}
+                            </Link>
+                          ) : (
+                            <span
+                              className="
+                                text-[11px]
+                                text-slate-400
+                              "
+                            >
+                              None
+                            </span>
+                          )}
+                        </td>
+
+                        <td
+                          className="
+                            px-4
+                            py-3.5
                             text-[11px]
                             text-slate-500
                           "
                         >
-                          <span
-                            className="
-                              flex
-                              items-center
-                              gap-1
-                            "
-                            title="Likes"
-                          >
-                            <Heart
-                              size={12}
-                            />
+                          {formatDate(
+                            pin.created_at,
+                          )}
+                        </td>
 
-                            {
-                              pin.likes_count
-                            }
-                          </span>
-
-                          <span
-                            className="
-                              flex
-                              items-center
-                              gap-1
-                            "
-                            title="Comments"
-                          >
-                            <MessageCircle
-                              size={12}
-                            />
-
-                            {
-                              pin.comments_count
-                            }
-                          </span>
-
-                          <span
-                            className="
-                              flex
-                              items-center
-                              gap-1
-                            "
-                            title="Vouches"
-                          >
-                            <ShieldCheck
-                              size={12}
-                            />
-
-                            {
-                              pin.vouches_count
-                            }
-                          </span>
-                        </div>
-                      </td>
-
-                      <td
-                        className="
-                          px-4
-                          py-3.5
-                        "
-                      >
-                        {pin.open_reports_count >
-                        0 ? (
-                          <span
-                            className="
-                              inline-flex
-                              items-center
-                              gap-1.5
-                              border
-                              border-amber-200
-                              bg-amber-50
-                              px-2
-                              py-1
-                              text-[10px]
-                              font-semibold
-                              text-amber-700
-                            "
-                          >
-                            <AlertTriangle
-                              size={11}
-                            />
-
-                            {
-                              pin.open_reports_count
-                            }
-                          </span>
-                        ) : (
-                          <span
-                            className="
-                              text-[11px]
-                              text-slate-400
-                            "
-                          >
-                            None
-                          </span>
-                        )}
-                      </td>
-
-                      <td
-                        className="
-                          px-4
-                          py-3.5
-                          text-[11px]
-                          text-slate-500
-                        "
-                      >
-                        {formatDate(
-                          pin.created_at,
-                        )}
-                      </td>
-
-                      <td
-                        className="
-                          px-5
-                          py-3.5
-                          text-right
-                        "
-                      >
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setSelectedPin(
-                              pin,
-                            )
-                          }
+                        <td
                           className="
-                            inline-flex
-                            h-8
-                            items-center
-                            gap-1.5
-                            border
-                            border-slate-200
-                            px-2.5
-                            text-[11px]
-                            font-medium
-                            text-slate-600
-                            transition
-                            hover:border-slate-300
-                            hover:bg-slate-50
-                            hover:text-slate-900
+                            px-5
+                            py-3.5
+                            text-right
                           "
                         >
-                          <Eye
-                            size={13}
-                          />
+                          <div
+                            className="
+                              flex
+                              items-center
+                              justify-end
+                              gap-2
+                            "
+                          >
+                            {underReview ? (
+                              <Link
+                                href={`/admin/reports?pin=${pin.id}`}
+                                className="
+                                  inline-flex
+                                  h-8
+                                  items-center
+                                  gap-1.5
+                                  border
+                                  border-amber-200
+                                  bg-amber-50
+                                  px-2.5
+                                  text-[11px]
+                                  font-medium
+                                  text-amber-700
+                                  transition
+                                  hover:bg-amber-100
+                                "
+                              >
+                                <ShieldAlert
+                                  size={13}
+                                />
 
-                          View
-                        </button>
-                      </td>
-                    </tr>
-                  ),
+                                Review
+                              </Link>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openFlagModal(
+                                    pin,
+                                  )
+                                }
+                                className="
+                                  inline-flex
+                                  h-8
+                                  items-center
+                                  gap-1.5
+                                  border
+                                  border-[#FDC1C9]
+                                  bg-[#FDC1C9]/10
+                                  px-2.5
+                                  text-[11px]
+                                  font-medium
+                                  text-[#A92F56]
+                                  transition
+                                  hover:bg-[#FDC1C9]/20
+                                  hover:text-[#72213A]
+                                "
+                              >
+                                <Flag
+                                  size={13}
+                                />
+
+                                Flag
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSelectedPin(
+                                  pin,
+                                )
+                              }
+                              className="
+                                inline-flex
+                                h-8
+                                items-center
+                                gap-1.5
+                                border
+                                border-slate-200
+                                px-2.5
+                                text-[11px]
+                                font-medium
+                                text-slate-600
+                                transition
+                                hover:border-slate-300
+                                hover:bg-slate-50
+                                hover:text-slate-900
+                              "
+                            >
+                              <Eye
+                                size={13}
+                              />
+
+                              View
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  },
                 )}
               </tbody>
             </table>
@@ -1233,13 +1544,9 @@ export default function PinsTable({
                 text-slate-500
               "
             >
-              {
-                pagination.page
-              }
+              {pagination.page}
               {" / "}
-              {
-                pagination.pageCount
-              }
+              {pagination.pageCount}
             </span>
 
             {pagination.page <
@@ -1286,11 +1593,11 @@ export default function PinsTable({
           <button
             type="button"
             aria-label="Close pin details"
-            onClick={() =>
-              setSelectedPin(
-                null,
-              )
-            }
+            onClick={() => {
+              if (!flagPin) {
+                setSelectedPin(null);
+              }
+            }}
             className="
               fixed
               inset-0
@@ -1348,19 +1655,17 @@ export default function PinsTable({
                     text-slate-400
                   "
                 >
-                  Pin #
-                  {
-                    selectedPin.id
-                  }
+                  Pin #{selectedPin.id}
                 </p>
               </div>
 
               <button
                 type="button"
                 onClick={() =>
-                  setSelectedPin(
-                    null,
-                  )
+                  setSelectedPin(null)
+                }
+                disabled={
+                  Boolean(flagPin)
                 }
                 className="
                   flex
@@ -1373,12 +1678,12 @@ export default function PinsTable({
                   text-slate-400
                   hover:bg-slate-50
                   hover:text-slate-700
+                  disabled:cursor-not-allowed
+                  disabled:opacity-40
                 "
                 aria-label="Close"
               >
-                <X
-                  size={15}
-                />
+                <X size={15} />
               </button>
             </div>
 
@@ -1461,9 +1766,7 @@ export default function PinsTable({
                         text-slate-950
                       "
                     >
-                      {
-                        selectedPin.title
-                      }
+                      {selectedPin.title}
                     </h2>
 
                     <div
@@ -1548,39 +1851,30 @@ export default function PinsTable({
                 >
                   {[
                     {
-                      label:
-                        "Likes",
+                      label: "Likes",
                       value:
                         selectedPin.likes_count,
-                      icon:
-                        Heart,
+                      icon: Heart,
                     },
-
                     {
-                      label:
-                        "Comments",
+                      label: "Comments",
                       value:
                         selectedPin.comments_count,
-                      icon:
-                        MessageCircle,
+                      icon: MessageCircle,
                     },
-
                     {
-                      label:
-                        "Vouches",
+                      label: "Vouches",
                       value:
                         selectedPin.vouches_count,
-                      icon:
-                        ShieldCheck,
+                      icon: ShieldCheck,
                     },
-
                     {
-                      label:
-                        "Reports",
+                      label: "Reports",
                       value:
-                        selectedPin.open_reports_count,
-                      icon:
-                        AlertTriangle,
+                        getOpenReportCount(
+                          selectedPin,
+                        ),
+                      icon: AlertTriangle,
                     },
                   ].map(
                     (
@@ -1598,8 +1892,7 @@ export default function PinsTable({
                           className={`
                             p-3
                             ${
-                              index <
-                              3
+                              index < 3
                                 ? "border-r border-slate-200"
                                 : ""
                             }
@@ -1620,9 +1913,7 @@ export default function PinsTable({
                               text-slate-950
                             "
                           >
-                            {
-                              metric.value
-                            }
+                            {metric.value}
                           </p>
 
                           <p
@@ -1632,9 +1923,7 @@ export default function PinsTable({
                               text-slate-400
                             "
                           >
-                            {
-                              metric.label
-                            }
+                            {metric.label}
                           </p>
                         </div>
                       );
@@ -1879,6 +2168,209 @@ export default function PinsTable({
                 </div>
               </div>
 
+              {/* Moderation */}
+              <div
+                className="
+                  border-b
+                  border-slate-100
+                  px-5
+                  py-5
+                "
+              >
+                <div
+                  className="
+                    flex
+                    items-center
+                    gap-2
+                  "
+                >
+                  <ShieldAlert
+                    size={14}
+                    className="
+                      text-[#A92F56]
+                    "
+                  />
+
+                  <p
+                    className="
+                      text-[10px]
+                      font-bold
+                      uppercase
+                      tracking-[0.12em]
+                      text-slate-400
+                    "
+                  >
+                    Moderation
+                  </p>
+                </div>
+
+                {isPinUnderReview(
+                  selectedPin,
+                ) ? (
+                  <div
+                    className="
+                      mt-4
+                      border
+                      border-amber-200
+                      bg-amber-50/70
+                      p-4
+                    "
+                  >
+                    <div
+                      className="
+                        flex
+                        items-start
+                        gap-3
+                      "
+                    >
+                      <AlertTriangle
+                        size={16}
+                        className="
+                          mt-0.5
+                          shrink-0
+                          text-amber-600
+                        "
+                      />
+
+                      <div>
+                        <p
+                          className="
+                            text-xs
+                            font-semibold
+                            text-amber-800
+                          "
+                        >
+                          Pin is already
+                          under review
+                        </p>
+
+                        <p
+                          className="
+                            mt-1
+                            text-[10px]
+                            leading-5
+                            text-amber-700
+                          "
+                        >
+                          This pin has{" "}
+                          {getOpenReportCount(
+                            selectedPin,
+                          )}{" "}
+                          open moderation
+                          report
+                          {getOpenReportCount(
+                            selectedPin,
+                          ) === 1
+                            ? ""
+                            : "s"}
+                          . Open the existing
+                          case instead of
+                          creating a duplicate.
+                        </p>
+                      </div>
+                    </div>
+
+                    <Link
+                      href={`/admin/reports?pin=${selectedPin.id}`}
+                      className="
+                        mt-4
+                        flex
+                        h-10
+                        w-full
+                        items-center
+                        justify-center
+                        gap-2
+                        border
+                        border-amber-200
+                        bg-white
+                        text-xs
+                        font-semibold
+                        text-amber-700
+                        transition
+                        hover:bg-amber-100
+                      "
+                    >
+                      <Eye
+                        size={14}
+                      />
+
+                      Review associated
+                      reports
+                    </Link>
+                  </div>
+                ) : (
+                  <div
+                    className="
+                      mt-4
+                      border
+                      border-slate-200
+                      bg-slate-50/50
+                      p-4
+                    "
+                  >
+                    <p
+                      className="
+                        text-xs
+                        font-semibold
+                        text-slate-800
+                      "
+                    >
+                      Flag this pin for
+                      administrator review
+                    </p>
+
+                    <p
+                      className="
+                        mt-1
+                        text-[10px]
+                        leading-5
+                        text-slate-500
+                      "
+                    >
+                      Flagging creates a
+                      pending moderation
+                      report. It does not
+                      automatically remove
+                      the pin or punish the
+                      creator.
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openFlagModal(
+                          selectedPin,
+                        )
+                      }
+                      className="
+                        mt-4
+                        flex
+                        h-10
+                        w-full
+                        items-center
+                        justify-center
+                        gap-2
+                        border
+                        border-[#FDC1C9]
+                        bg-[#FDC1C9]/15
+                        text-xs
+                        font-semibold
+                        text-[#A92F56]
+                        transition
+                        hover:bg-[#FDC1C9]/25
+                        hover:text-[#72213A]
+                      "
+                    >
+                      <Flag
+                        size={14}
+                      />
+
+                      Flag Pin for Review
+                    </button>
+                  </div>
+                )}
+              </div>
+
               {/* Record info */}
               <div
                 className="
@@ -1935,10 +2427,7 @@ export default function PinsTable({
                           text-slate-700
                         "
                       >
-                        #
-                        {
-                          selectedPin.id
-                        }
+                        #{selectedPin.id}
                       </span>
 
                       <button
@@ -1955,6 +2444,7 @@ export default function PinsTable({
                           text-slate-400
                           hover:text-[#A92F56]
                         "
+                        aria-label="Copy pin ID"
                       >
                         {copied ===
                         "id" ? (
@@ -1999,41 +2489,654 @@ export default function PinsTable({
                       )}
                     </span>
                   </div>
-                </div>
 
-                {selectedPin.open_reports_count >
-                  0 && (
-                  <Link
-                    href={`/admin/reports?pin=${selectedPin.id}`}
+                  <div
                     className="
-                      mt-5
                       flex
-                      h-10
-                      w-full
+                      items-center
+                      justify-between
+                      gap-3
+                    "
+                  >
+                    <span
+                      className="
+                        text-xs
+                        text-slate-500
+                      "
+                    >
+                      Open reports
+                    </span>
+
+                    <span
+                      className="
+                        text-xs
+                        font-semibold
+                        text-slate-800
+                      "
+                    >
+                      {getOpenReportCount(
+                        selectedPin,
+                      )}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </>
+      )}
+
+      {/* Flag pin modal */}
+      {flagPin && (
+        <>
+          <button
+            type="button"
+            aria-label="Close flag pin dialog"
+            onClick={
+              closeFlagModal
+            }
+            disabled={
+              isFlagging
+            }
+            className="
+              fixed
+              inset-0
+              z-[60]
+              bg-slate-950/35
+              backdrop-blur-[1px]
+              disabled:cursor-wait
+            "
+          />
+
+          <div
+            className="
+              fixed
+              inset-0
+              z-[70]
+              flex
+              items-center
+              justify-center
+              p-4
+              pointer-events-none
+            "
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="flag-pin-title"
+              className="
+                pointer-events-auto
+                w-full
+                max-w-[520px]
+                border
+                border-slate-200
+                bg-white
+                shadow-2xl
+                shadow-slate-950/15
+              "
+            >
+              <div
+                className="
+                  flex
+                  items-start
+                  justify-between
+                  gap-4
+                  border-b
+                  border-slate-200
+                  px-5
+                  py-4
+                "
+              >
+                <div
+                  className="
+                    flex
+                    items-start
+                    gap-3
+                  "
+                >
+                  <div
+                    className="
+                      flex
+                      h-9
+                      w-9
+                      shrink-0
                       items-center
                       justify-center
+                      bg-[#A92F56]/[0.08]
+                      text-[#A92F56]
+                    "
+                  >
+                    <Flag
+                      size={16}
+                    />
+                  </div>
+
+                  <div>
+                    <h2
+                      id="flag-pin-title"
+                      className="
+                        text-sm
+                        font-semibold
+                        text-slate-950
+                      "
+                    >
+                      Flag Pin for Review
+                    </h2>
+
+                    <p
+                      className="
+                        mt-1
+                        text-[10px]
+                        leading-4
+                        text-slate-400
+                      "
+                    >
+                      Create an administrative
+                      moderation case for this
+                      pin.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={
+                    closeFlagModal
+                  }
+                  disabled={
+                    isFlagging
+                  }
+                  className="
+                    flex
+                    h-8
+                    w-8
+                    shrink-0
+                    items-center
+                    justify-center
+                    border
+                    border-slate-200
+                    text-slate-400
+                    transition
+                    hover:bg-slate-50
+                    hover:text-slate-700
+                    disabled:cursor-not-allowed
+                    disabled:opacity-40
+                  "
+                  aria-label="Close"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+
+              <div
+                className="
+                  max-h-[70vh]
+                  overflow-y-auto
+                  px-5
+                  py-5
+                "
+              >
+                <div
+                  className="
+                    border
+                    border-slate-200
+                    bg-slate-50/60
+                    p-4
+                  "
+                >
+                  <div
+                    className="
+                      flex
+                      items-start
+                      gap-3
+                    "
+                  >
+                    <div
+                      className="
+                        flex
+                        h-9
+                        w-9
+                        shrink-0
+                        items-center
+                        justify-center
+                        bg-white
+                        text-[#A92F56]
+                      "
+                    >
+                      <MapPin
+                        size={15}
+                      />
+                    </div>
+
+                    <div
+                      className="
+                        min-w-0
+                      "
+                    >
+                      <p
+                        className="
+                          truncate
+                          text-xs
+                          font-semibold
+                          text-slate-900
+                        "
+                      >
+                        {flagPin.title}
+                      </p>
+
+                      <p
+                        className="
+                          mt-1
+                          text-[10px]
+                          text-slate-400
+                        "
+                      >
+                        Pin #{flagPin.id}
+                        {" · "}
+                        {creatorName(
+                          flagPin,
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {flagError && (
+                  <div
+                    className="
+                      mt-4
+                      flex
+                      items-start
                       gap-2
                       border
-                      border-amber-200
-                      bg-amber-50
+                      border-red-200
+                      bg-red-50
+                      px-3
+                      py-2.5
                       text-xs
-                      font-semibold
-                      text-amber-700
-                      transition
-                      hover:bg-amber-100
+                      text-red-700
                     "
                   >
                     <AlertTriangle
                       size={14}
+                      className="
+                        mt-0.5
+                        shrink-0
+                      "
                     />
 
-                    Review associated
-                    reports
-                  </Link>
+                    <p>
+                      {flagError}
+                    </p>
+                  </div>
                 )}
+
+                <div
+                  className="
+                    mt-5
+                  "
+                >
+                  <label
+                    htmlFor="flag-type"
+                    className="
+                      text-[10px]
+                      font-semibold
+                      uppercase
+                      tracking-[0.08em]
+                      text-slate-500
+                    "
+                  >
+                    Report type
+                  </label>
+
+                  <select
+                    id="flag-type"
+                    value={flagType}
+                    onChange={(
+                      event,
+                    ) =>
+                      setFlagType(
+                        event.target.value as FlagType,
+                      )
+                    }
+                    disabled={
+                      isFlagging
+                    }
+                    className="
+                      mt-2
+                      h-10
+                      w-full
+                      border
+                      border-slate-200
+                      bg-white
+                      px-3
+                      text-xs
+                      text-slate-700
+                      outline-none
+                      transition
+                      hover:border-slate-300
+                      focus:border-[#CC3A67]
+                      focus:ring-2
+                      focus:ring-[#FDC1C9]/30
+                      disabled:cursor-not-allowed
+                      disabled:bg-slate-50
+                    "
+                  >
+                    {FLAG_TYPES.map(
+                      (option) => (
+                        <option
+                          key={
+                            option.value
+                          }
+                          value={
+                            option.value
+                          }
+                        >
+                          {option.label}
+                        </option>
+                      ),
+                    )}
+                  </select>
+                </div>
+
+                <div
+                  className="
+                    mt-4
+                  "
+                >
+                  <div
+                    className="
+                      flex
+                      items-center
+                      justify-between
+                      gap-3
+                    "
+                  >
+                    <label
+                      htmlFor="flag-reason"
+                      className="
+                        text-[10px]
+                        font-semibold
+                        uppercase
+                        tracking-[0.08em]
+                        text-slate-500
+                      "
+                    >
+                      Reason
+                    </label>
+
+                    <span
+                      className="
+                        text-[9px]
+                        text-slate-400
+                      "
+                    >
+                      {flagReason.length}/200
+                    </span>
+                  </div>
+
+                  <input
+                    id="flag-reason"
+                    value={flagReason}
+                    onChange={(
+                      event,
+                    ) => {
+                      setFlagReason(
+                        event.target.value,
+                      );
+
+                      if (flagError) {
+                        setFlagError(null);
+                      }
+                    }}
+                    maxLength={200}
+                    disabled={
+                      isFlagging
+                    }
+                    placeholder="Example: Misleading location information"
+                    className="
+                      mt-2
+                      h-10
+                      w-full
+                      border
+                      border-slate-200
+                      bg-white
+                      px-3
+                      text-xs
+                      text-slate-700
+                      outline-none
+                      transition
+                      placeholder:text-slate-400
+                      hover:border-slate-300
+                      focus:border-[#CC3A67]
+                      focus:ring-2
+                      focus:ring-[#FDC1C9]/30
+                      disabled:cursor-not-allowed
+                      disabled:bg-slate-50
+                    "
+                  />
+
+                  <p
+                    className="
+                      mt-1.5
+                      text-[9px]
+                      leading-4
+                      text-slate-400
+                    "
+                  >
+                    Give reviewers a short,
+                    specific explanation of
+                    why this pin requires
+                    moderation.
+                  </p>
+                </div>
+
+                <div
+                  className="
+                    mt-4
+                  "
+                >
+                  <div
+                    className="
+                      flex
+                      items-center
+                      justify-between
+                      gap-3
+                    "
+                  >
+                    <label
+                      htmlFor="flag-details"
+                      className="
+                        text-[10px]
+                        font-semibold
+                        uppercase
+                        tracking-[0.08em]
+                        text-slate-500
+                      "
+                    >
+                      Additional details
+                    </label>
+
+                    <span
+                      className="
+                        text-[9px]
+                        text-slate-400
+                      "
+                    >
+                      Optional · {flagDetails.length}/2000
+                    </span>
+                  </div>
+
+                  <textarea
+                    id="flag-details"
+                    value={flagDetails}
+                    onChange={(
+                      event,
+                    ) =>
+                      setFlagDetails(
+                        event.target.value,
+                      )
+                    }
+                    maxLength={2000}
+                    rows={5}
+                    disabled={
+                      isFlagging
+                    }
+                    placeholder="Add context, evidence, or instructions for the administrator reviewing this case..."
+                    className="
+                      mt-2
+                      w-full
+                      resize-y
+                      border
+                      border-slate-200
+                      bg-white
+                      px-3
+                      py-3
+                      text-xs
+                      leading-5
+                      text-slate-700
+                      outline-none
+                      transition
+                      placeholder:text-slate-400
+                      hover:border-slate-300
+                      focus:border-[#CC3A67]
+                      focus:ring-2
+                      focus:ring-[#FDC1C9]/30
+                      disabled:cursor-not-allowed
+                      disabled:bg-slate-50
+                    "
+                  />
+                </div>
+
+                <div
+                  className="
+                    mt-4
+                    flex
+                    items-start
+                    gap-2
+                    border
+                    border-blue-200
+                    bg-blue-50/70
+                    px-3
+                    py-2.5
+                  "
+                >
+                  <ShieldAlert
+                    size={14}
+                    className="
+                      mt-0.5
+                      shrink-0
+                      text-blue-600
+                    "
+                  />
+
+                  <p
+                    className="
+                      text-[10px]
+                      leading-5
+                      text-blue-700
+                    "
+                  >
+                    This action creates a
+                    pending report and sends
+                    the pin to the Reports
+                    moderation queue. It does
+                    not automatically delete
+                    the pin or suspend its
+                    creator.
+                  </p>
+                </div>
+              </div>
+
+              <div
+                className="
+                  flex
+                  items-center
+                  justify-end
+                  gap-2
+                  border-t
+                  border-slate-200
+                  bg-slate-50/50
+                  px-5
+                  py-4
+                "
+              >
+                <button
+                  type="button"
+                  onClick={
+                    closeFlagModal
+                  }
+                  disabled={
+                    isFlagging
+                  }
+                  className="
+                    inline-flex
+                    h-10
+                    items-center
+                    justify-center
+                    border
+                    border-slate-200
+                    bg-white
+                    px-4
+                    text-xs
+                    font-semibold
+                    text-slate-600
+                    transition
+                    hover:bg-slate-50
+                    disabled:cursor-not-allowed
+                    disabled:opacity-50
+                  "
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  onClick={
+                    submitFlag
+                  }
+                  disabled={
+                    isFlagging ||
+                    flagReason.trim()
+                      .length < 3
+                  }
+                  className="
+                    inline-flex
+                    h-10
+                    items-center
+                    justify-center
+                    gap-2
+                    bg-[#A92F56]
+                    px-4
+                    text-xs
+                    font-semibold
+                    text-white
+                    transition
+                    hover:bg-[#72213A]
+                    disabled:cursor-not-allowed
+                    disabled:opacity-50
+                  "
+                >
+                  {isFlagging ? (
+                    <Loader2
+                      size={14}
+                      className="
+                        animate-spin
+                      "
+                    />
+                  ) : (
+                    <Flag
+                      size={14}
+                    />
+                  )}
+
+                  {isFlagging
+                    ? "Flagging..."
+                    : "Flag Pin"}
+                </button>
               </div>
             </div>
-          </aside>
+          </div>
         </>
       )}
     </>

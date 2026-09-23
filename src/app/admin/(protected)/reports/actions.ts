@@ -16,6 +16,10 @@ import {
   getSupabaseAdmin,
 } from "@/lib/supabase/admin";
 
+/* =========================================================
+   REPORT STATUS VALIDATION
+========================================================= */
+
 const updateReportSchema =
   z.object({
     reportId:
@@ -31,6 +35,57 @@ const updateReportSchema =
         "dismissed",
       ]),
   });
+
+/* =========================================================
+   PIN FLAG VALIDATION
+========================================================= */
+
+const flagPinSchema =
+  z.object({
+    pinId:
+      z.coerce
+        .number()
+        .int()
+        .positive(),
+
+    type:
+      z.enum([
+        "spam",
+        "harassment",
+        "inappropriate",
+        "copyright",
+        "misinformation",
+        "other",
+      ]),
+
+    reason:
+      z
+        .string()
+        .trim()
+        .min(
+          3,
+          "Please provide a reason for flagging this pin.",
+        )
+        .max(
+          200,
+          "Reason must be 200 characters or fewer.",
+        ),
+
+    details:
+      z
+        .string()
+        .trim()
+        .max(
+          2000,
+          "Additional details must be 2,000 characters or fewer.",
+        )
+        .optional()
+        .default(""),
+  });
+
+/* =========================================================
+   TYPES
+========================================================= */
 
 type ModerationStatus =
   | "pending"
@@ -54,6 +109,46 @@ export type ReportActionResult =
       success: false;
       message: string;
     };
+
+export type FlagPinInput = {
+  pinId:
+    number;
+
+  type:
+    | "spam"
+    | "harassment"
+    | "inappropriate"
+    | "copyright"
+    | "misinformation"
+    | "other";
+
+  reason:
+    string;
+
+  details?:
+    string;
+};
+
+export type FlagPinActionResult =
+  | {
+      success: true;
+
+      message:
+        string;
+
+      reportId:
+        number;
+    }
+  | {
+      success: false;
+
+      message:
+        string;
+    };
+
+/* =========================================================
+   HELPERS
+========================================================= */
 
 function canTransition(
   currentStatus:
@@ -90,7 +185,8 @@ function canTransition(
 }
 
 function statusLabel(
-  status: string,
+  status:
+    string,
 ) {
   return status
     .replace(
@@ -106,8 +202,13 @@ function statusLabel(
     );
 }
 
+/* =========================================================
+   UPDATE REPORT STATUS
+========================================================= */
+
 export async function updateReportStatusAction(
-  reportId: number,
+  reportId:
+    number,
   status:
     NextStatus,
 ): Promise<ReportActionResult> {
@@ -123,7 +224,8 @@ export async function updateReportStatusAction(
     !parsed.success
   ) {
     return {
-      success: false,
+      success:
+        false,
 
       message:
         "Invalid report action.",
@@ -137,11 +239,16 @@ export async function updateReportStatusAction(
     getSupabaseAdmin();
 
   const {
-    data: report,
-    error: readError,
+    data:
+      report,
+
+    error:
+      readError,
   } =
     await supabase
-      .from("reports")
+      .from(
+        "reports",
+      )
       .select(`
         id,
         status,
@@ -168,16 +275,20 @@ export async function updateReportStatusAction(
     );
 
     return {
-      success: false,
+      success:
+        false,
 
       message:
         "Unable to load this report.",
     };
   }
 
-  if (!report) {
+  if (
+    !report
+  ) {
     return {
-      success: false,
+      success:
+        false,
 
       message:
         "Report could not be found.",
@@ -197,7 +308,8 @@ export async function updateReportStatusAction(
     nextStatus
   ) {
     return {
-      success: true,
+      success:
+        true,
 
       message:
         "No changes were required.",
@@ -211,7 +323,8 @@ export async function updateReportStatusAction(
     )
   ) {
     return {
-      success: false,
+      success:
+        false,
 
       message:
         `This report cannot be changed from ${statusLabel(
@@ -231,7 +344,9 @@ export async function updateReportStatusAction(
       updateError,
   } =
     await supabase
-      .from("reports")
+      .from(
+        "reports",
+      )
       .update({
         status:
           nextStatus,
@@ -256,7 +371,8 @@ export async function updateReportStatusAction(
     );
 
     return {
-      success: false,
+      success:
+        false,
 
       message:
         "Unable to update this report.",
@@ -268,7 +384,9 @@ export async function updateReportStatusAction(
       logError,
   } =
     await supabase
-      .from("logs")
+      .from(
+        "logs",
+      )
       .insert({
         user_id:
           admin.id,
@@ -304,7 +422,7 @@ export async function updateReportStatusAction(
   }
 
   /*
-   * Reports affects several
+   * Report status affects several
    * administrative views.
    */
   revalidatePath(
@@ -320,7 +438,8 @@ export async function updateReportStatusAction(
   );
 
   return {
-    success: true,
+    success:
+      true,
 
     message:
       nextStatus ===
@@ -330,5 +449,385 @@ export async function updateReportStatusAction(
             "resolved"
           ? "Report resolved successfully."
           : "Report dismissed successfully.",
+  };
+}
+
+/* =========================================================
+   FLAG PIN FOR REVIEW
+========================================================= */
+
+export async function flagPinForReviewAction(
+  input:
+    FlagPinInput,
+): Promise<FlagPinActionResult> {
+  /* =======================================================
+     VALIDATE INPUT
+  ======================================================= */
+
+  const parsed =
+    flagPinSchema.safeParse(
+      input,
+    );
+
+  if (
+    !parsed.success
+  ) {
+    const message =
+      parsed.error
+        .issues[0]
+        ?.message ??
+      "Invalid pin flag request.";
+
+    return {
+      success:
+        false,
+
+      message,
+    };
+  }
+
+  const admin =
+    await requireAdmin();
+
+  const supabase =
+    getSupabaseAdmin();
+
+  const {
+    pinId,
+    type,
+    reason,
+    details,
+  } =
+    parsed.data;
+
+  /* =======================================================
+     LOAD PIN
+  ======================================================= */
+
+  const {
+    data:
+      pin,
+
+    error:
+      pinError,
+  } =
+    await supabase
+      .from(
+        "pins",
+      )
+      .select(`
+        id,
+        title,
+        creator_id,
+        category,
+        subcategory
+      `)
+      .eq(
+        "id",
+        pinId,
+      )
+      .maybeSingle();
+
+  if (
+    pinError
+  ) {
+    console.error(
+      "[ADMIN PINS] Failed to load pin before flagging:",
+      pinError,
+    );
+
+    return {
+      success:
+        false,
+
+      message:
+        "Unable to load this pin.",
+    };
+  }
+
+  if (
+    !pin
+  ) {
+    return {
+      success:
+        false,
+
+      message:
+        "The pin could not be found.",
+    };
+  }
+
+  /* =======================================================
+     PREVENT DUPLICATE OPEN MODERATION CASES
+  ======================================================= */
+
+  /*
+   * If the pin already has any pending or
+   * actively reviewed report, creating
+   * another administrator flag would only
+   * duplicate the moderation case.
+   *
+   * The administrator should use the
+   * existing report instead.
+   */
+  const {
+    data:
+      existingReports,
+
+    error:
+      existingReportError,
+  } =
+    await supabase
+      .from(
+        "reports",
+      )
+      .select(`
+        id,
+        status,
+        type,
+        reason
+      `)
+      .eq(
+        "pin_id",
+        pin.id,
+      )
+      .in(
+        "status",
+        [
+          "pending",
+          "reviewing",
+        ],
+      )
+      .order(
+        "created_at",
+        {
+          ascending:
+            false,
+        },
+      )
+      .limit(
+        1,
+      );
+
+  if (
+    existingReportError
+  ) {
+    console.error(
+      "[ADMIN PINS] Failed to check existing pin reports:",
+      existingReportError,
+    );
+
+    return {
+      success:
+        false,
+
+      message:
+        "Unable to check whether this pin is already under review.",
+    };
+  }
+
+  const existingReport =
+    existingReports?.[0];
+
+  if (
+    existingReport
+  ) {
+    return {
+      success:
+        false,
+
+      message:
+        `This pin is already associated with open report #${existingReport.id}. Review the existing case instead of creating a duplicate.`,
+    };
+  }
+
+  /* =======================================================
+     CREATE REPORT
+  ======================================================= */
+
+  const now =
+    new Date()
+      .toISOString();
+
+  const cleanedDetails =
+    details.trim();
+
+  const {
+    data:
+      createdReport,
+
+    error:
+      createError,
+  } =
+    await supabase
+      .from(
+        "reports",
+      )
+      .insert({
+        /*
+         * reporter_id is intentionally null.
+         *
+         * This is an administrator-created
+         * moderation flag rather than a
+         * report submitted by an app user.
+         */
+        reporter_id:
+          null,
+
+        reported_user_id:
+          pin.creator_id ??
+          null,
+
+        pin_id:
+          pin.id,
+
+        comment_id:
+          null,
+
+        chat_id:
+          null,
+
+        type,
+
+        reason,
+
+        details:
+          cleanedDetails ||
+          null,
+
+        status:
+          "pending",
+
+        reviewed_by:
+          null,
+
+        reviewed_at:
+          null,
+
+        created_at:
+          now,
+      })
+      .select(
+        "id",
+      )
+      .single();
+
+  if (
+    createError ||
+    !createdReport
+  ) {
+    console.error(
+      "[ADMIN PINS] Failed to flag pin:",
+      createError,
+    );
+
+    return {
+      success:
+        false,
+
+      message:
+        "Unable to flag this pin for review.",
+    };
+  }
+
+  const reportId =
+    Number(
+      createdReport.id,
+    );
+
+  /* =======================================================
+     AUDIT LOG
+  ======================================================= */
+
+  const {
+    error:
+      logError,
+  } =
+    await supabase
+      .from(
+        "logs",
+      )
+      .insert({
+        user_id:
+          admin.id,
+
+        actor_type:
+          "admin",
+
+        action_type:
+          "admin_pin_flagged",
+
+        description:
+          [
+            `Administrator flagged pin #${pin.id} for moderation.`,
+            `Report #${reportId}.`,
+            `Type=${type}.`,
+            `Reason=${reason}.`,
+          ].join(
+            " ",
+          ),
+
+        target_table:
+          "pins",
+
+        target_id:
+          String(
+            pin.id,
+          ),
+
+        created_at:
+          now,
+      });
+
+  if (
+    logError
+  ) {
+    /*
+     * The moderation case has already
+     * been created successfully, so an
+     * audit-log failure should not roll
+     * back the report.
+     */
+    console.error(
+      "[ADMIN PINS] Failed to write pin flag audit log:",
+      logError,
+    );
+  }
+
+  /* =======================================================
+     REVALIDATION
+  ======================================================= */
+
+  /*
+   * The newly-created report changes:
+   *
+   * - Pins open report count
+   * - Reports queue
+   * - Dashboard moderation statistics
+   */
+  revalidatePath(
+    "/admin/pins",
+  );
+
+  revalidatePath(
+    "/admin/reports",
+  );
+
+  revalidatePath(
+    "/admin",
+  );
+
+  /* =======================================================
+     RESULT
+  ======================================================= */
+
+  return {
+    success:
+      true,
+
+    reportId,
+
+    message:
+      `Pin #${pin.id} was flagged successfully and added to the moderation queue as report #${reportId}.`,
   };
 }
