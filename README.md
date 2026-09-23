@@ -1,22 +1,22 @@
-```markdown
+
 # PIN & TELL — Web Administration System
 
-PIN & TELL Web Admin is the administrative and moderation platform for the **PIN & TELL** mobile application.
+**PIN & TELL Web Admin** is the administrative and moderation platform for the **PIN & TELL** mobile application.
 
-The system provides administrators with tools for managing users, reviewing reported content, monitoring pins, handling moderation violations, applying enforcement actions, managing platform settings, and maintaining an auditable record of administrative activity.
+It provides administrators with tools for managing users, reviewing reported content, monitoring pins, handling automated content violations, applying enforcement actions, managing platform settings, and maintaining an auditable record of administrative activity.
 
-The web administration system uses the **same Supabase backend and database** as the PIN & TELL Android application.
+> The Web Admin and Android application use the **same Supabase backend and database**. :chatgpt-content-reference{index="1"}
 
 ---
 
 ## Overview
 
-PIN & TELL is an interactive map-based social platform designed around location-based community information and vehicle-related tracking.
+PIN & TELL is an interactive map-based social platform centered around location-based community information and vehicle-related tracking.
 
-The platform includes:
+### Main Platform Features
 
 - Interactive map-based pins
-- Pin and post functionality
+- Pin and Post functionality
 - Mileage tracking
 - Fuel monitoring
 - Eco-driving insights
@@ -25,12 +25,12 @@ The platform includes:
 - Reports and moderation
 - Administrative management
 
-The Web Admin system focuses primarily on:
+### Web Admin Focus
 
 - Content moderation
 - User management
-- Reports
 - Pin management
+- Reports management
 - Automated content violations
 - Ban management
 - Platform configuration
@@ -40,52 +40,24 @@ The Web Admin system focuses primarily on:
 
 # Technology Stack
 
-## Frontend
-
-- Next.js
-- React
-- TypeScript
-- Tailwind CSS
-- Lucide React
-
-## Backend
-
-- Next.js Server Actions
-- Next.js Route Handlers
-- Supabase
-- PostgreSQL
-
-## Authentication
-
-### Mobile Users
-
-Mobile application users authenticate using:
-
-```text
-Supabase Auth
-```
-
-### Administrators
-
-Administrators use a separate administrative authentication system backed by:
-
-```text
-public.admins
-```
-
-and the application's administrative session system.
-
-Administrator authentication is intentionally separated from the mobile application's Supabase Auth user authentication.
+| Layer | Technologies |
+|---|---|
+| Frontend | Next.js, React, TypeScript, Tailwind CSS |
+| UI Icons | Lucide React |
+| Backend | Next.js Server Actions, Route Handlers |
+| Database | PostgreSQL |
+| Backend Platform | Supabase |
+| Mobile Authentication | Supabase Auth |
+| Admin Authentication | Custom `public.admins` authentication/session system |
 
 ---
 
-# Project Architecture
+# System Architecture
 
 ```text
 PIN & TELL
 │
 ├── Android Application
-│   │
 │   ├── Supabase Auth
 │   ├── Map Pins
 │   ├── Social Features
@@ -94,7 +66,6 @@ PIN & TELL
 │   └── Eco-Driving
 │
 ├── Next.js Web Admin
-│   │
 │   ├── Dashboard
 │   ├── User Management
 │   ├── Pin Management
@@ -105,14 +76,13 @@ PIN & TELL
 │   └── Audit Logs
 │
 └── Supabase
-    │
     ├── PostgreSQL Database
     ├── Supabase Auth
     ├── Storage
     └── Shared Application Data
 ```
 
-Both applications operate on the same backend data.
+Both the Android application and Web Admin operate on the same backend data.
 
 ---
 
@@ -122,19 +92,19 @@ Both applications operate on the same backend data.
 
 The administrative dashboard provides an overview of system activity and moderation information.
 
-The dashboard can surface information such as:
+It can display statistics related to:
 
 - Users
 - Pins
 - Reports
 - Moderation activity
-- Platform statistics
+- Platform activity
 
 ---
 
 # User Management
 
-Administrators can inspect user accounts and associated information.
+Administrators can inspect registered user accounts and associated information.
 
 User information is primarily resolved from:
 
@@ -142,23 +112,31 @@ User information is primarily resolved from:
 profiles
 ```
 
-When necessary, the administrative backend may use Supabase Auth as a fallback for account identity information.
+When profile information is incomplete, the administrative backend may use **Supabase Auth** as an identity fallback.
 
-This prevents valid users from unnecessarily appearing as:
+This reduces cases where a valid user is incorrectly displayed as:
 
 ```text
 Unknown user
 ```
 
-when profile information is incomplete.
+The identity resolution priority is:
+
+```text
+Full Name
+   ↓
+Username
+   ↓
+Email
+```
 
 ---
 
 # Pin Management
 
-The Pins page provides administrators with a centralized view of map content.
+The **Pins** page provides administrators with a centralized view of location-based content.
 
-Each pin can display:
+Each pin may display:
 
 - Pin title
 - Category
@@ -173,24 +151,24 @@ Each pin can display:
 - Open reports
 - Creation date
 
-Administrators can inspect a pin using the detailed side drawer.
+Administrators can open an individual pin through a detailed side drawer.
 
 ---
 
-## Pin Details
+## Pin Details Drawer
 
-The pin drawer includes:
+The drawer includes:
 
 - Pin information
 - Pin photo
-- Category
+- Category and subcategory
 - Description
-- Engagement information
-- Creator
-- User link
+- Engagement statistics
+- Creator information
+- User profile link
 - Coordinates
 - Google Maps link
-- Moderation information
+- Moderation status
 - Record information
 
 ---
@@ -199,15 +177,15 @@ The pin drawer includes:
 
 Administrators can manually flag a pin for moderation.
 
-Pins that do not currently have an open moderation case display:
+Pins without an active moderation case display:
 
 ```text
 Flag
 ```
 
-After selecting the action, the administrator can choose a report category and provide a reason.
+Administrators can select a report type and provide a reason.
 
-Supported report types include:
+### Supported Report Types
 
 - Spam
 - Harassment
@@ -216,11 +194,11 @@ Supported report types include:
 - Misinformation
 - Other
 
-Administrators can also provide optional additional details.
+An optional additional-details field is also available.
 
 ---
 
-## Flagging Workflow
+## Admin Flagging Workflow
 
 ```text
 Administrator
@@ -244,7 +222,7 @@ Create Report
 Reports Moderation Queue
 ```
 
-A successful administrator flag creates a normal moderation case inside:
+A successfully flagged pin creates a new moderation case inside:
 
 ```text
 reports
@@ -256,13 +234,13 @@ with:
 status = pending
 ```
 
-The pin is then available for review through the Reports page.
+The case then becomes available on the Reports page. :chatgpt-content-reference{index="2"}
 
 ---
 
 ## Duplicate Report Protection
 
-The administrator cannot create another moderation case when the pin already has an open report with either:
+Administrators cannot create another flag when a pin already has an open report with either:
 
 ```text
 pending
@@ -278,13 +256,13 @@ status.
 
 Instead, the administrator is directed to the existing moderation case.
 
-This prevents unnecessary duplicate moderation records.
+This prevents duplicate active reports for the same pin.
 
 ---
 
 # Reports Management
 
-The Reports page provides administrators with a centralized moderation queue.
+The **Reports** page serves as the centralized moderation queue.
 
 Reports can target:
 
@@ -293,7 +271,7 @@ Reports can target:
 - Chat messages
 - Users
 
-Supported report types include:
+### Report Types
 
 ```text
 spam
@@ -308,8 +286,6 @@ other
 
 ## Report Statuses
 
-Reports may use the following workflow statuses:
-
 ```text
 pending
 reviewing
@@ -319,7 +295,7 @@ suspended
 outdated
 ```
 
-The primary moderation workflow is:
+### Primary Workflow
 
 ```text
 Pending
@@ -336,9 +312,9 @@ Resolved        Dismissed
 
 # Report Review Drawer
 
-Administrators can open a report to inspect the entire moderation case.
+Administrators can open a report to inspect the moderation case.
 
-The drawer contains:
+The review drawer includes:
 
 - Report ID
 - Report type
@@ -358,92 +334,84 @@ The drawer contains:
 
 # Reporter Identification
 
-The system distinguishes between multiple reporter sources.
-
-## User Reports
-
-Reports submitted by application users are resolved using:
-
-```text
-reporter_id
-```
-
-The system attempts to resolve the reporter through:
-
-```text
-profiles
-```
-
-If the profile does not contain enough identity information, the backend can use Supabase Auth as a fallback.
-
-The interface prioritizes:
-
-```text
-Full Name
-↓
-Username
-↓
-Email
-```
-
-Example:
-
-```text
-Lean Joshua Aclan
-@lean
-```
+The Reports system distinguishes between several reporter sources.
 
 ---
 
-## Administrator Reports
+## User Reports
 
-Administrator-created pin flags are displayed using the administrator's actual identity.
-
-Example:
-
-```text
-Ashley Antones    ADMIN
-admin@example.com
-```
-
-Because:
+Reports created by application users are associated with:
 
 ```text
 reports.reporter_id
 ```
 
-references application users, an administrator-created flag does not impersonate a mobile user account.
+which references the user's Supabase Auth account.
 
-Instead, the administrator identity is recorded in the audit log.
+The administrative system first attempts to resolve identity through:
 
-The report can then resolve the administrator from:
+```text
+profiles
+```
+
+If the profile does not contain enough information, the system may use Supabase Auth as a fallback.
+
+Example:
+
+**Reported By**
+
+> Lean Joshua Aclan  
+> `@lean`
+
+---
+
+## Administrator Reports
+
+Administrator-created pin flags display the actual administrator who created the report.
+
+Example:
+
+**Reported By**
+
+> Ashley Antones `ADMIN`  
+> admin@example.com
+
+Administrator IDs are **not** placed in:
+
+```text
+reports.reporter_id
+```
+
+because that field belongs to application users.
+
+Instead, the administrator identity is recorded through the audit log:
 
 ```text
 logs
-        ↓
+  ↓
 admin_pin_flagged
-        ↓
+  ↓
 logs.user_id
-        ↓
+  ↓
 admins
 ```
 
-This keeps the database relationships valid while preserving administrator accountability.
+This preserves correct database relationships while maintaining administrator accountability. :chatgpt-content-reference{index="3"}
 
 ---
 
 ## Automated Moderation Reports
 
-Cases generated automatically by the content moderation system are identified separately.
+Automatically generated moderation cases are displayed separately.
 
 Example:
 
-```text
-PIN & TELL Moderation    SYSTEM
-Automated moderation
-```
+**Reported By**
 
-This prevents automated cases from being incorrectly displayed as user reports.
+> PIN & TELL Moderation `SYSTEM`  
+> Automated moderation
+
+This prevents automated cases from appearing as unknown or ordinary users.
 
 ---
 
@@ -451,35 +419,35 @@ This prevents automated cases from being incorrectly displayed as user reports.
 
 PIN & TELL includes automated moderation for newly submitted pin content.
 
-The moderation system evaluates:
+The moderation engine evaluates:
 
 - Pin title
 - Pin description
 
 before the pin is accepted.
 
-The Android application sends pin creation requests through:
+The Android application submits pin creation through:
 
-```text
+```http
 POST /api/pins
 ```
 
-instead of inserting moderated pin content directly into the database.
+rather than inserting moderated content directly into Supabase.
 
 ---
 
 # Moderated Content Categories
 
-The moderation engine detects patterns associated with:
+The moderation system detects patterns associated with:
 
 - Profanity
 - Harassment
 - Abusive language
 - Serious threats
 
-The moderation logic currently includes English and Filipino language patterns.
+Current moderation includes English and Filipino language patterns.
 
-Examples of content categories may include:
+Examples of internal categories include:
 
 ```text
 profanity
@@ -487,7 +455,7 @@ harassment
 threat
 ```
 
-The moderation system also assigns severity information that can be used by enforcement logic.
+The moderation system also determines severity information used by enforcement logic.
 
 ---
 
@@ -528,7 +496,7 @@ Moderate Title + Description
       Reject Pin Creation
 ```
 
-Moderated content is rejected before the pin is inserted.
+Moderated content is rejected before the pin is inserted into the database. :chatgpt-content-reference{index="4"}
 
 ---
 
@@ -536,203 +504,103 @@ Moderated content is rejected before the pin is inserted.
 
 Content violations use a rolling:
 
-```text
-90-day active strike window
-```
+> **90-day active strike window**
 
-The progression is designed to begin with warnings and escalate after repeated violations.
+Enforcement begins with warnings and progressively escalates for repeated violations.
 
----
+| Strike | Enforcement |
+|---:|---|
+| 1 | Warning |
+| 2 | Warning |
+| 3 | Strong Warning |
+| 4 | Final Warning |
+| 5 | **3-Day Suspension** |
+| 6 | Strong Warning |
+| 7 | Final Escalation Warning |
+| 8 | **7-Day Suspension** |
+| 9 | Final Warning |
+| 10 | **30-Day Suspension** |
+| 11+ | **Administrator Review** |
 
-## Strike 1
+The system does **not automatically issue a permanent ban** after repeated strikes.
 
-```text
-Warning
-```
-
-The user receives an initial warning.
-
----
-
-## Strike 2
-
-```text
-Warning
-```
-
-A second violation results in another warning.
-
----
-
-## Strike 3
-
-```text
-Strong Warning
-```
-
-The user is informed that continued violations may result in account restrictions.
-
----
-
-## Strike 4
-
-```text
-Final Warning
-```
-
-The user receives a final warning before temporary enforcement begins.
-
----
-
-## Strike 5
-
-```text
-3-Day Suspension
-```
-
-Repeated violations result in a temporary three-day suspension.
-
----
-
-## Strike 6
-
-```text
-Strong Warning
-```
-
-After returning from suspension, another violation generates another strong warning.
-
----
-
-## Strike 7
-
-```text
-Final Escalation Warning
-```
-
-The user is warned again before a longer suspension.
-
----
-
-## Strike 8
-
-```text
-7-Day Suspension
-```
-
-The account receives a seven-day temporary suspension.
-
----
-
-## Strike 9
-
-```text
-Final Warning
-```
-
-The account receives another final warning.
-
----
-
-## Strike 10
-
-```text
-30-Day Suspension
-```
-
-A thirty-day temporary suspension is applied.
-
----
-
-## Strike 11+
-
-```text
-Administrator Review
-```
-
-The system does not automatically apply a permanent ban.
-
-Instead, the user is escalated to the administrative moderation queue for manual review.
-
-Administrators determine whether additional enforcement is appropriate.
+At Strike 11 and beyond, the account is escalated for administrator review so enforcement remains subject to human moderation. :chatgpt-content-reference{index="5"}
 
 ---
 
 # Serious Threat Handling
 
-Certain serious threats can bypass the normal warning sequence and immediately create a moderation review case.
+Certain serious threats can bypass the normal warning progression and immediately create an administrator-review case.
 
-This allows administrators to inspect potentially high-risk content without waiting for the account to accumulate multiple ordinary strikes.
+This allows potentially serious content to be reviewed without waiting for the account to accumulate multiple ordinary strikes.
 
 ---
 
 # Duplicate Violation Protection
 
-Repeated submission of the exact same rejected content within approximately:
+Submitting the exact same blocked content repeatedly within approximately:
 
 ```text
 120 seconds
 ```
 
-does not continuously generate additional strikes.
+does not continuously add new strikes.
 
-This helps prevent accidental strike inflation caused by repeated submission attempts.
+This protects users from accidental strike inflation caused by repeated submission attempts.
 
 ---
 
 # Moderation Logging
 
-Automated content moderation activity is recorded through the existing:
+Automated moderation activity is recorded through:
 
 ```text
 logs
 ```
 
-table.
-
-Content policy violations use an action type similar to:
+Content violations use an action type such as:
 
 ```text
 content_policy_violation
 ```
 
-The logging system can retain moderation metadata without storing the entire rejected message in ordinary audit logs.
+Moderation logs can retain useful metadata while avoiding the unnecessary storage of complete rejected content in ordinary audit records.
 
 ---
 
-# Moderation Violators Dashboard
+# Moderation Violators
 
-The Reports page includes a section for users with automated moderation violations.
+The Reports page also includes a section for users who have triggered automated moderation rules.
 
-The section can display:
+### Summary Metrics
 
 - Violators
-- Active strikes
-- Suspended users
-- Users requiring review
+- Active Strikes
+- Suspended
+- Needs Review
 
-The violations table can include:
+### Violations Table
 
-```text
-User
-Active Strikes
-Severity
-Last Violation
-Account Status
-Enforcement
-Action
-```
+| Column | Description |
+|---|---|
+| User | Account associated with the violations |
+| Active Strikes | Violations inside the active strike window |
+| Severity | Latest/highest moderation severity |
+| Last Violation | Most recent violation time |
+| Account Status | Active, suspended, or banned |
+| Enforcement | Current moderation action |
+| Action | View detailed violation history |
 
 ---
 
 ## Violation Details
 
-Selecting a moderation violator can show:
+Selecting a moderation violator can display:
 
 - User identity
 - Account status
 - Active strikes
-- Violation history
+- Total moderation history
 - Latest violation
 - Severity
 - Violation categories
@@ -745,7 +613,7 @@ Selecting a moderation violator can show:
 
 # Ban Management
 
-Administrative enforcement is maintained separately from report workflow state.
+Account enforcement is stored separately from report workflow state.
 
 Ban records are stored inside:
 
@@ -753,7 +621,7 @@ Ban records are stored inside:
 user_bans
 ```
 
-This separation allows:
+This allows:
 
 ```text
 Report Moderation
@@ -771,19 +639,13 @@ to remain independently auditable.
 
 ## Supported Ban Types
 
-The current database supports:
-
 ```text
 temp
 permanent
 temp_ip
 ```
 
----
-
-## Duration Types
-
-Ban durations may use:
+## Supported Duration Types
 
 ```text
 hours
@@ -797,13 +659,13 @@ permanent
 
 # Account Status
 
-User account status is maintained through:
+Account status is stored through:
 
 ```text
 profiles.status
 ```
 
-Supported application statuses include:
+Supported states include:
 
 ```text
 active
@@ -815,7 +677,7 @@ banned
 
 # Audit Logging
 
-Administrative and automated system activity is logged using:
+Administrative and automated activity is recorded through:
 
 ```text
 logs
@@ -829,30 +691,24 @@ admin_report_status_changed
 content_policy_violation
 ```
 
-Audit logging helps maintain accountability for moderation and administrative actions.
+Audit logging provides traceability for moderation and administrative actions.
 
 ---
 
-# Database Tables Used
+# Important Database Tables
 
-The moderation and administrative system works with the existing PIN & TELL database.
-
-Important tables include:
-
-```text
-admins
-admin_sessions
-profiles
-pins
-reports
-logs
-user_bans
-comments
-chats
-platform_settings
-```
-
-Additional PIN & TELL tables support the wider application.
+| Table | Purpose |
+|---|---|
+| `admins` | Administrator accounts |
+| `admin_sessions` | Administrative sessions |
+| `profiles` | User profiles |
+| `pins` | Map-based content |
+| `reports` | Moderation cases |
+| `logs` | User/admin/system audit activity |
+| `user_bans` | Account enforcement |
+| `comments` | Pin comments |
+| `chats` | Chat messages |
+| `platform_settings` | Administrative platform configuration |
 
 No separate moderation database is required.
 
@@ -860,61 +716,43 @@ No separate moderation database is required.
 
 # Important Database Relationships
 
-## Pins
+## Pin Creator
 
 ```text
 pins.creator_id
-        │
-        ▼
+       │
+       ▼
 auth.users.id
 ```
 
----
-
-## User Reports
+## Report Creator
 
 ```text
 reports.reporter_id
-        │
-        ▼
+       │
+       ▼
 auth.users.id
 ```
-
----
 
 ## Reported User
 
 ```text
 reports.reported_user_id
-        │
-        ▼
+       │
+       ▼
 auth.users.id
 ```
-
----
 
 ## Report Reviewer
 
 ```text
 reports.reviewed_by
-        │
-        ▼
+       │
+       ▼
 admins.id
 ```
 
----
-
 ## Administrator Flag Identity
-
-Administrator flags intentionally use an audit trail rather than placing an administrator UUID in:
-
-```text
-reports.reporter_id
-```
-
-because that field belongs to application users.
-
-The relationship is therefore:
 
 ```text
 Report
@@ -929,6 +767,8 @@ Admin ID
 admins
 ```
 
+Administrator IDs are intentionally not placed inside `reports.reporter_id`.
+
 ---
 
 # API
@@ -939,12 +779,12 @@ admins
 POST /api/pins
 ```
 
-The endpoint handles:
+The endpoint performs:
 
-1. Bearer token validation
+1. Bearer-token validation
 2. Supabase Auth user lookup
-3. Account status validation
-4. Active ban validation
+3. Account-status validation
+4. Active-ban validation
 5. Content moderation
 6. Strike enforcement
 7. Pin creation
@@ -952,11 +792,9 @@ The endpoint handles:
 
 ---
 
-## Unsupported GET Request
+## Unsupported GET
 
-A GET request to the pin creation endpoint returns a method error.
-
-Example:
+A GET request to the pin-creation endpoint returns:
 
 ```json
 {
@@ -968,13 +806,12 @@ Example:
 
 ---
 
-# Suggested Project Structure
+# Project Structure
 
 ```text
 src/
 │
 ├── app/
-│   │
 │   ├── admin/
 │   │   └── (protected)/
 │   │       ├── pins/
@@ -987,7 +824,6 @@ src/
 │           └── route.ts
 │
 ├── components/
-│   │
 │   └── admin/
 │       ├── pins/
 │       ├── reports/
@@ -995,7 +831,6 @@ src/
 │       └── settings/
 │
 └── lib/
-    │
     ├── admin/
     │   ├── pins.ts
     │   ├── reports.ts
@@ -1044,9 +879,7 @@ Create:
 .env.local
 ```
 
-Configure the required Supabase and application environment variables.
-
-Example structure:
+Example:
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
@@ -1054,9 +887,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 ```
 
-Additional environment variables required by your authentication/session implementation should also be configured.
+Additional variables required by the custom administrator session implementation should also be configured.
 
-> Never commit production credentials or service-role keys to GitHub.
+> **Never commit production credentials or your Supabase service-role key to GitHub.**
 
 ---
 
@@ -1074,7 +907,7 @@ Open:
 http://localhost:3000
 ```
 
-Administrative pages are available under:
+Admin pages are available under:
 
 ```text
 /admin
@@ -1096,7 +929,7 @@ Create a production build:
 npm run build
 ```
 
-The recommended workflow after major changes is:
+Recommended verification workflow:
 
 ```bash
 npm run lint
@@ -1106,16 +939,16 @@ npm run dev
 
 ---
 
-# Moderation Testing
+# Testing
 
 ## Automated Moderation Test
 
 1. Sign in through the Android application.
 2. Attempt to create a pin containing moderated content.
 3. Submit the pin.
-4. Confirm the pin is rejected.
-5. Confirm the warning is displayed.
-6. Confirm the violation appears in administrative moderation data.
+4. Confirm that the pin is rejected.
+5. Confirm that the moderation warning appears.
+6. Confirm that the violation appears in administrative moderation data.
 
 ---
 
@@ -1124,34 +957,28 @@ npm run dev
 1. Create a normal pin.
 2. Submit the pin.
 3. Confirm the API accepts the request.
-4. Confirm the pin appears in the database.
+4. Confirm the pin appears in Supabase.
 5. Confirm the pin appears on the Admin Pins page.
 
 ---
 
-# Admin Flag Test
+## Admin Flag Test
 
-1. Open:
+Open:
 
 ```text
 /admin/pins
 ```
 
-2. Select a pin with no active report.
-
-3. Click:
+Select a pin without an active report and click:
 
 ```text
 Flag
 ```
 
-4. Select a report type.
+Choose a report type, enter a reason, and submit.
 
-5. Enter a reason.
-
-6. Submit the flag.
-
-Expected result:
+### Expected Result
 
 ```text
 Pin Reports Count +1
@@ -1161,15 +988,11 @@ Administrator Identity Recorded
 Audit Log Created
 ```
 
-7. Open the report.
+Opening the resulting case should display:
 
-The Reports page should display:
+**Reported By**
 
-```text
-Reported By
-Administrator Name
-ADMIN
-```
+> Administrator Name `ADMIN`
 
 instead of:
 
@@ -1179,20 +1002,20 @@ Unknown user
 
 ---
 
-# User Report Identity Test
+## User Reporter Test
 
-For an application-generated user report, the Reports page should attempt to display:
+A report submitted by an ordinary application user should display:
 
-```text
-Full Name
-@username
-```
+**Reported By**
 
-If profile identity is incomplete, the backend may fall back to account information from Supabase Auth.
+> Full Name  
+> `@username`
+
+If the user's profile information is incomplete, account information from Supabase Auth may be used as a fallback.
 
 ---
 
-# Report Workflow Test
+## Report Workflow Test
 
 Test:
 
@@ -1204,7 +1027,7 @@ Under Review
 Resolved
 ```
 
-Then test:
+Then:
 
 ```text
 Pending
@@ -1224,7 +1047,7 @@ Confirm that:
 
 # Security Considerations
 
-The project uses privileged Supabase access on the server.
+The Web Admin uses privileged Supabase server-side access.
 
 The Supabase service-role key must:
 
@@ -1233,35 +1056,33 @@ The Supabase service-role key must:
 - Never be committed to Git
 - Never be bundled into browser JavaScript
 
-Administrative actions must always verify an authenticated administrator before performing privileged database operations.
+Administrative actions must verify a valid authenticated administrator before performing privileged operations.
 
 ---
 
 # Moderation Design Principles
 
-The moderation system follows several important principles.
-
 ## Progressive Enforcement
 
-Ordinary violations escalate gradually rather than immediately applying permanent account enforcement.
+Ordinary violations escalate gradually instead of immediately causing permanent account enforcement.
 
 ## Human Review
 
-Permanent account enforcement is not automatically applied by the strike system.
+Permanent enforcement is not automatically applied by the strike system.
 
-Serious or repeated violations can instead be escalated for administrator review.
+Repeated or serious violations can instead be escalated to administrators.
 
 ## Auditability
 
-Administrative actions, automated moderation activity, reports, and bans are kept separately auditable.
+Reports, bans, administrator actions, and automated moderation events remain separately auditable.
 
 ## Shared Backend
 
-The Android application and Web Admin operate on the same Supabase database to avoid synchronization problems between separate moderation systems.
+The Android application and Web Admin operate on the same Supabase backend.
 
 ## No Silent Fallback
 
-When the API rejects pin creation because of moderation, the Android application should not bypass the moderation API by inserting the pin directly into Supabase.
+If `/api/pins` rejects a pin because of moderation, the Android application must **not bypass the moderation endpoint by directly inserting the pin into Supabase**. :chatgpt-content-reference{index="6"}
 
 ---
 
@@ -1269,7 +1090,7 @@ When the API rejects pin creation because of moderation, the Android application
 
 ## Temporary Ban Expiration
 
-Temporary automated moderation bans require careful synchronization between:
+Temporary moderation bans require synchronization between:
 
 ```text
 user_bans.status
@@ -1281,34 +1102,38 @@ and:
 profiles.status
 ```
 
-An expired automated ban should only reactivate a user when no other active enforcement or manual suspension remains.
+An expired automated suspension should reactivate the account only when:
 
-This logic must avoid accidentally overriding a manually suspended account.
+- No other active ban remains
+- No manual suspension remains
+- The expired enforcement was created by automated moderation
+
+This prevents automated expiration logic from accidentally overriding a manual administrative suspension.
 
 ---
 
 ## Concurrent Violations
 
-Strike calculation currently involves reading the user's moderation history and then recording the next violation.
+Strike calculation currently involves reading moderation history before recording the next violation.
 
-Multiple simultaneous requests from the same account may therefore require additional transactional protection if strict strike sequencing is required at high concurrency.
+Multiple simultaneous requests may therefore require transactional protection if strict strike sequencing becomes necessary.
 
 ---
 
-## Large Moderation History Queries
+## Large Moderation Histories
 
-Some moderation statistics currently place practical query limits on historical data.
+Some moderation statistics currently use practical query limits.
 
-For very large production datasets, these queries should eventually move toward:
+For larger production datasets, these queries may eventually be moved to:
 
 - Database aggregation
 - Pagination
-- RPC functions
+- PostgreSQL RPC functions
 - Materialized moderation statistics
 
 ---
 
-# Current Moderation Flow Summary
+# Moderation Flow Summary
 
 ```text
                     PIN & TELL
@@ -1337,24 +1162,24 @@ For very large production datasets, these queries should eventually move toward:
              ▼
      Content Moderation
              │
-      ┌──────┴──────┐
-      │             │
-    Clean        Violation
-      │             │
-      ▼             ▼
- Insert Pin      Record Strike
-                    │
-                    ▼
-                 Warning
-                    │
-                    ▼
-                Suspension
-                    │
-                    ▼
-              Admin Escalation
-                    │
-                    ▼
-                 Reports
+       ┌─────┴─────┐
+       │           │
+     Clean      Violation
+       │           │
+       ▼           ▼
+  Insert Pin   Record Strike
+                   │
+                   ▼
+                Warning
+                   │
+                   ▼
+               Suspension
+                   │
+                   ▼
+             Admin Escalation
+                   │
+                   ▼
+                Reports
 ```
 
 ---
@@ -1379,32 +1204,35 @@ Pins Page
           │
      ┌────┼────┐
      │    │    │
- Review Resolve Dismiss
-     │
-     └───────────────► Optional Ban
+   Review │  Dismiss
+          │
+       Resolve
+          │
+          └──────────► Optional Ban
 ```
 
 ---
 
 # Repository
 
-```text
-https://github.com/Ki-oshi/pin-and-tell-webadmin
-```
+**GitHub:**  
+`https://github.com/Ki-oshi/pin-and-tell-webadmin`
 
 ---
 
 # Project
 
-**PIN & TELL**
+## PIN & TELL
 
-Interactive Map-Based Social Platform with Mileage Tracking, Eco-Driving, and Fuel Consumption Monitoring.
+**Interactive Map-Based Social Platform with Mileage Tracking, Eco-Driving, and Fuel Consumption Monitoring**
 
 ---
 
-# Development Notes
+# Development Status
 
-The application is actively under development.
+> **Active Development**
+
+The application is currently under development.
 
 Features, moderation rules, administrative workflows, and interfaces may continue to change as the system is tested and refined.
 
@@ -1412,9 +1240,6 @@ Features, moderation rules, administrative workflows, and interfaces may continu
 
 # License
 
-This project was developed for academic and project-development purposes.
+This project was developed for **academic and project-development purposes**.
 
-Third-party libraries, frameworks, APIs, media, and services remain subject to their respective licenses and terms of use.
-```
-
-This README covers the flow from **automated profanity/abuse warnings → strike escalation → temporary suspensions → moderation violators → admin pin flagging → Reports → reporter/admin identity resolution → manual review and bans**.
+Third-party libraries, frameworks, APIs, media, and external services remain subject to their respective licenses and terms of use.
