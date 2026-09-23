@@ -1,122 +1,163 @@
 import "server-only";
 
 import {
+  requireAdmin,
+} from "@/lib/auth/session";
+
+import {
   getSupabaseAdmin,
 } from "@/lib/supabase/admin";
 
-export type PlatformSettingAdmin = {
+export type AdminSettingsAccount = {
   id: string;
   email: string;
   full_name: string | null;
   role: string;
-};
-
-export type PlatformSettingRow = {
-  id: number;
-
-  key: string;
-
-  value: string | null;
-
-  type: string;
-
-  grp: string;
-
-  description: string | null;
-
-  updated_by: string | null;
-
+  status: string;
   created_at: string | null;
-
   updated_at: string | null;
-
-  updated_admin:
-    PlatformSettingAdmin | null;
+  is_online: boolean | null;
+  last_seen: string | null;
 };
 
-export type PlatformSettingGroup = {
-  name: string;
-
-  settings:
-    PlatformSettingRow[];
+export type AdminPolicySetting = {
+  id: number;
+  key: string;
+  value: string | null;
+  type: string;
+  grp: string;
+  description: string | null;
+  updated_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
 };
 
-export type PlatformSettingsPageData = {
-  settings:
-    PlatformSettingRow[];
-
-  groups:
-    PlatformSettingGroup[];
-
-  stats: {
-    total:
-      number;
-
-    groups:
-      number;
-
-    configured:
-      number;
-
-    lastUpdated:
-      string | null;
-  };
-
-  hasErrors:
-    boolean;
+export type AdminSettingsPageData = {
+  account: AdminSettingsAccount;
+  policies: AdminPolicySetting[];
+  activeSessions: number;
 };
 
 type RawPlatformSetting = {
-  id:
-    number | string;
-
-  key:
-    string;
-
-  value:
-    string | null;
-
-  type:
-    string;
-
-  grp:
-    string;
-
-  description:
-    string | null;
-
-  updated_by:
-    string | null;
-
-  created_at:
-    string | null;
-
-  updated_at:
-    string | null;
+  id: number | string;
+  key: string;
+  value: string | null;
+  type: string;
+  grp: string | null;
+  description: string | null;
+  updated_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
 };
 
-function normalizeGroup(
+/* =========================================================
+   POLICY FILTERING
+========================================================= */
+
+function normalizePolicyIdentifier(
   value:
     string | null,
 ): string {
-  const normalized =
-    value?.trim();
-
-  if (
-    !normalized
-  ) {
-    return "General";
-  }
-
-  return normalized;
+  return (
+    value ??
+    ""
+  )
+    .trim()
+    .toLowerCase()
+    .replace(
+      /[\s.-]+/g,
+      "_",
+    );
 }
 
-function compareSettings(
+/*
+ * Cookie Policy and GDPR are intentionally
+ * excluded from the admin settings UI.
+ *
+ * We do not delete their database records.
+ * They simply will not be loaded into the
+ * editable Policies section.
+ */
+function isExcludedPolicy(
+  setting:
+    RawPlatformSetting,
+): boolean {
+  const key =
+    normalizePolicyIdentifier(
+      setting.key,
+    );
+
+  const group =
+    normalizePolicyIdentifier(
+      setting.grp,
+    );
+
+  const combined =
+    `${key} ${group}`;
+
+  return (
+    combined.includes(
+      "cookie",
+    ) ||
+    combined.includes(
+      "gdpr",
+    )
+  );
+}
+
+function isPolicySetting(
+  setting:
+    RawPlatformSetting,
+): boolean {
+  if (
+    isExcludedPolicy(
+      setting,
+    )
+  ) {
+    return false;
+  }
+
+  const key =
+    normalizePolicyIdentifier(
+      setting.key,
+    );
+
+  const group =
+    normalizePolicyIdentifier(
+      setting.grp,
+    );
+
+  const policyTerms = [
+    "policy",
+    "policies",
+    "privacy",
+    "terms",
+    "legal",
+    "agreement",
+    "consent",
+    "guideline",
+    "community_guideline",
+  ];
+
+  return policyTerms.some(
+    (
+      term,
+    ) =>
+      key.includes(
+        term,
+      ) ||
+      group.includes(
+        term,
+      ),
+  );
+}
+
+function comparePolicies(
   a:
-    PlatformSettingRow,
+    AdminPolicySetting,
   b:
-    PlatformSettingRow,
-) {
+    AdminPolicySetting,
+): number {
   const groupCompare =
     a.grp.localeCompare(
       b.grp,
@@ -144,65 +185,70 @@ function compareSettings(
   );
 }
 
-function getLastUpdated(
-  settings:
-    PlatformSettingRow[],
-): string | null {
-  let latest:
-    string | null =
-    null;
+/* =========================================================
+   PAGE DATA
+========================================================= */
 
-  let latestTime =
-    Number.NEGATIVE_INFINITY;
+export async function getAdminSettingsPageData(): Promise<AdminSettingsPageData> {
+  const currentAdmin =
+    await requireAdmin();
 
-  for (
-    const setting of
-    settings
-  ) {
-    if (
-      !setting.updated_at
-    ) {
-      continue;
-    }
-
-    const time =
-      new Date(
-        setting.updated_at,
-      ).getTime();
-
-    if (
-      !Number.isFinite(
-        time,
-      )
-    ) {
-      continue;
-    }
-
-    if (
-      time >
-      latestTime
-    ) {
-      latestTime =
-        time;
-
-      latest =
-        setting.updated_at;
-    }
-  }
-
-  return latest;
-}
-
-export async function getPlatformSettingsPageData(): Promise<PlatformSettingsPageData> {
   const supabase =
     getSupabaseAdmin();
 
-  const errors:
-    unknown[] = [];
+  /* =======================================================
+     ADMIN ACCOUNT
+  ======================================================= */
 
   const {
     data:
-      rawSettingsData,
+      accountData,
+
+    error:
+      accountError,
+  } =
+    await supabase
+      .from(
+        "admins",
+      )
+      .select(`
+        id,
+        email,
+        full_name,
+        role,
+        status,
+        created_at,
+        updated_at,
+        is_online,
+        last_seen
+      `)
+      .eq(
+        "id",
+        currentAdmin.id,
+      )
+      .single();
+
+  if (
+    accountError ||
+    !accountData
+  ) {
+    console.error(
+      "[ADMIN SETTINGS] Failed to load admin account:",
+      accountError,
+    );
+
+    throw new Error(
+      "Unable to load the administrator account.",
+    );
+  }
+
+  /* =======================================================
+     POLICY SETTINGS
+  ======================================================= */
+
+  const {
+    data:
+      settingsData,
 
     error:
       settingsError,
@@ -223,13 +269,6 @@ export async function getPlatformSettingsPageData(): Promise<PlatformSettingsPag
         updated_at
       `)
       .order(
-        "grp",
-        {
-          ascending:
-            true,
-        },
-      )
-      .order(
         "key",
         {
           ascending:
@@ -241,122 +280,30 @@ export async function getPlatformSettingsPageData(): Promise<PlatformSettingsPag
     settingsError
   ) {
     console.error(
-      "[ADMIN SETTINGS] Failed to load platform settings:",
-      settingsError,
-    );
-
-    errors.push(
+      "[ADMIN SETTINGS] Failed to load policy settings:",
       settingsError,
     );
   }
 
   const rawSettings =
     (
-      rawSettingsData ??
+      settingsData ??
       []
     ) as RawPlatformSetting[];
 
   /*
-   * Load only the administrators
-   * referenced by updated_by.
+   * Only actual policy/legal records are
+   * exposed here.
    *
-   * This lets the settings page show
-   * who last modified a setting without
-   * changing the platform_settings
-   * schema.
+   * Cookie-related and GDPR-related rows
+   * are explicitly filtered out.
    */
-  const adminIds = [
-    ...new Set(
-      rawSettings
-        .map(
-          (
-            setting,
-          ) =>
-            setting.updated_by,
-        )
-        .filter(
-          (
-            value,
-          ): value is string =>
-            Boolean(
-              value,
-            ),
-        ),
-    ),
-  ];
-
-  const admins =
-    new Map<
-      string,
-      PlatformSettingAdmin
-    >();
-
-  if (
-    adminIds.length >
-    0
-  ) {
-    const {
-      data:
-        adminData,
-
-      error:
-        adminError,
-    } =
-      await supabase
-        .from(
-          "admins",
-        )
-        .select(`
-          id,
-          email,
-          full_name,
-          role
-        `)
-        .in(
-          "id",
-          adminIds,
-        );
-
-    if (
-      adminError
-    ) {
-      console.error(
-        "[ADMIN SETTINGS] Failed to load setting administrators:",
-        adminError,
-      );
-
-      errors.push(
-        adminError,
-      );
-    } else {
-      for (
-        const admin of
-        adminData ??
-        []
-      ) {
-        admins.set(
-          admin.id,
-          {
-            id:
-              admin.id,
-
-            email:
-              admin.email,
-
-            full_name:
-              admin.full_name,
-
-            role:
-              admin.role,
-          },
-        );
-      }
-    }
-  }
-
-  const settings:
-    PlatformSettingRow[] =
+  const policies:
+    AdminPolicySetting[] =
     rawSettings
+      .filter(
+        isPolicySetting,
+      )
       .map(
         (
           setting,
@@ -376,9 +323,11 @@ export async function getPlatformSettingsPageData(): Promise<PlatformSettingsPag
             setting.type,
 
           grp:
-            normalizeGroup(
-              setting.grp,
-            ),
+            (
+              setting.grp ??
+              "Policies"
+            ).trim() ||
+            "Policies",
 
           description:
             setting.description,
@@ -391,114 +340,93 @@ export async function getPlatformSettingsPageData(): Promise<PlatformSettingsPag
 
           updated_at:
             setting.updated_at,
-
-          updated_admin:
-            setting.updated_by
-              ? admins.get(
-                  setting.updated_by,
-                ) ??
-                null
-              : null,
         }),
       )
       .sort(
-        compareSettings,
+        comparePolicies,
       );
 
-  /*
-   * Group dynamically using whatever
-   * grp values already exist in the
-   * database.
-   *
-   * We deliberately do not hard-code
-   * General, Security, Moderation, etc.
-   * because platform_settings is the
-   * authoritative configuration source.
-   */
-  const groupMap =
-    new Map<
-      string,
-      PlatformSettingRow[]
-    >();
+  /* =======================================================
+     ACTIVE ADMIN SESSIONS
+  ======================================================= */
 
-  for (
-    const setting of
-    settings
+  const now =
+    new Date()
+      .toISOString();
+
+  const {
+    count:
+      activeSessions,
+
+    error:
+      sessionError,
+  } =
+    await supabase
+      .from(
+        "admin_sessions",
+      )
+      .select(
+        "id",
+        {
+          count:
+            "exact",
+
+          head:
+            true,
+        },
+      )
+      .eq(
+        "admin_id",
+        currentAdmin.id,
+      )
+      .gt(
+        "expires_at",
+        now,
+      );
+
+  if (
+    sessionError
   ) {
-    const existing =
-      groupMap.get(
-        setting.grp,
-      );
-
-    if (
-      existing
-    ) {
-      existing.push(
-        setting,
-      );
-
-      continue;
-    }
-
-    groupMap.set(
-      setting.grp,
-      [
-        setting,
-      ],
+    console.error(
+      "[ADMIN SETTINGS] Failed to count active sessions:",
+      sessionError,
     );
   }
 
-  const groups:
-    PlatformSettingGroup[] =
-    Array.from(
-      groupMap.entries(),
-    ).map(
-      ([
-        name,
-        groupSettings,
-      ]) => ({
-        name,
-
-        settings:
-          groupSettings,
-      }),
-    );
-
-  const configured =
-    settings.filter(
-      (
-        setting,
-      ) =>
-        setting.value !==
-          null &&
-        setting.value
-          .trim()
-          .length >
-          0,
-    ).length;
-
   return {
-    settings,
+    account: {
+      id:
+        accountData.id,
 
-    groups,
+      email:
+        accountData.email,
 
-    stats: {
-      total:
-        settings.length,
+      full_name:
+        accountData.full_name,
 
-      groups:
-        groups.length,
+      role:
+        accountData.role,
 
-      configured,
+      status:
+        accountData.status,
 
-      lastUpdated:
-        getLastUpdated(
-          settings,
-        ),
+      created_at:
+        accountData.created_at,
+
+      updated_at:
+        accountData.updated_at,
+
+      is_online:
+        accountData.is_online,
+
+      last_seen:
+        accountData.last_seen,
     },
 
-    hasErrors:
-      errors.length >
+    policies,
+
+    activeSessions:
+      activeSessions ??
       0,
   };
 }

@@ -103,7 +103,7 @@ const navigation: NavigationGroup[] = [
         icon: ScrollText,
       },
       {
-        label: "Platform Settings",
+        label: "Settings",
         href: "/admin/settings",
         icon: Settings,
       },
