@@ -419,10 +419,6 @@ export default function LoginForm({
               text-slate-500
             "
           >
-            Only use this
-            on a trusted
-            personal
-            device.
           </span>
         </span>
       </label>

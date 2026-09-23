@@ -23,10 +23,10 @@ import LoginForm from "./login-form";
 export const metadata:
   Metadata = {
     title:
-      "Admin Login | PIN&TELL",
+      "Admin Login | PIN & TELL",
 
     description:
-      "Secure administrator access for the PIN&TELL management system.",
+      "Secure administrator access for the PIN & TELL management system.",
 
     robots: {
       index: false,
@@ -68,7 +68,7 @@ function PinTellLogo({
     >
       <Image
         src="/images/pin-tell-logo.png"
-        alt="PIN&TELL logo"
+        alt="PIN & TELL logo"
         width={size}
         height={size}
         priority
@@ -227,7 +227,7 @@ export default async function AdminLoginPage() {
                     tracking-tight
                   "
                 >
-                  PIN&TELL
+                  PIN & TELL
                 </p>
 
                 <p
@@ -303,7 +303,7 @@ export default async function AdminLoginPage() {
                 A centralized
                 workspace for
                 managing
-                PIN&TELL users,
+                PIN & TELL users,
                 reports, pins,
                 moderation and
                 platform
@@ -448,7 +448,7 @@ export default async function AdminLoginPage() {
                     text-slate-900
                   "
                 >
-                  PIN&TELL
+                  PIN & TELL
                 </p>
 
                 <p
