@@ -1,9 +1,3 @@
-Below is a full, formatted `README.md` you can paste directly into the root of:
-
-```text
-E:\PROJECTS\pin-and-tell-webadmin\README.md
-```
-
 ```markdown
 # PIN & TELL — Web Administration System
 
