@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { ShieldCheck } from "lucide-react";
 
 import {
   Ban,
@@ -61,6 +62,11 @@ const navigation: NavigationGroup[] = [
         label: "Pins",
         href: "/admin/pins",
         icon: MapPin,
+      },
+      {
+        label: "Photo Reviews",
+        href: "/admin/pin-image-reviews",
+        icon: ShieldCheck,
       },
       {
         label: "Reports",

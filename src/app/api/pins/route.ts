@@ -19,6 +19,21 @@ import {
   applyModerationEnforcement,
 } from "@/lib/moderation/enforcement";
 
+import {
+  ImageModerationError,
+  moderatePinImage,
+  moderatePinImageBytes,
+  type ImageModerationResult,
+} from "@/lib/moderation/image-moderation";
+
+// Until the Android app has been updated, old public-photo submissions
+// can be scanned as a compatibility fallback. At the coordinated cutover,
+// set PIN_MODERATION_REQUIRE_STAGING=true to reject that unsafe path.
+const REQUIRE_STAGING = process.env.PIN_MODERATION_REQUIRE_STAGING === "true";
+const STAGING_BUCKET = "pin-photo-staging";
+const PUBLIC_BUCKET = "pin-photos";
+const MAX_STAGED_PHOTOS = 3;
+
 /* ============================================================
    ROUTE CONFIGURATION
 ============================================================ */
@@ -116,6 +131,12 @@ const createPinSchema =
         )
         .nullable()
         .optional(),
+
+    // New Android versions upload here BEFORE calling /api/pins.
+    // These are Storage OBJECT PATHS, not signed or public URLs.
+    stagedPhotoPaths: z.array(z.string().trim().min(1).max(250))
+      .max(MAX_STAGED_PHOTOS)
+      .optional(),
   });
 
 /* ============================================================
@@ -554,6 +575,82 @@ function getBanMessage(
 }
 
 /* ============================================================
+   PRIVATE STAGING AND IMAGE MODERATION
+============================================================ */
+
+type StagedScan = {
+  path: string;
+  bytes: Uint8Array;
+  scan: ImageModerationResult;
+};
+
+// Never trust a client-supplied Storage path. Users can ONLY submit objects
+// inside their own top-level UUID directory. No URLs or traversal segments.
+function validateOwnedPhotoPath(path: string, userId: string): boolean {
+  const bits = path.split("/");
+  if (bits.length !== 2 || bits[0] !== userId) return false;
+  return /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,180}\.(jpg|jpeg|png|webp)$/i.test(bits[1])
+    && !bits[1].includes("..");
+}
+
+async function scanStagedPhoto(path: string): Promise<StagedScan> {
+  const storage = getSupabaseAdmin().storage.from(STAGING_BUCKET);
+  const { data, error } = await storage.download(path);
+  if (error || !data) {
+    throw new ImageModerationError(
+      "IMAGE_FETCH_FAILED",
+      "The staged photo could not be retrieved. Upload the photo again.",
+    );
+  }
+  const bytes = new Uint8Array(await data.arrayBuffer());
+  const scan = await moderatePinImageBytes(bytes);
+  return { path, bytes, scan };
+}
+
+async function safelyRemoveStagedPhotos(paths: string[]): Promise<void> {
+  if (paths.length === 0) return;
+  const { error } = await getSupabaseAdmin().storage.from(STAGING_BUCKET).remove(paths);
+  if (error) console.error("[PIN API] Staging cleanup failed:", error);
+}
+
+async function safelyRemovePublishedPhotos(paths: string[]): Promise<void> {
+  if (paths.length === 0) return;
+  const { error } = await getSupabaseAdmin().storage.from(PUBLIC_BUCKET).remove(paths);
+  if (error) console.error("[PIN API] Approved-photo rollback failed:", error);
+}
+
+async function writeImageDecisionAudit(
+  userId: string,
+  decision: "block" | "review",
+  scans: ImageModerationResult[],
+): Promise<void> {
+  const { error } = await getSupabaseAdmin().from("logs").insert({
+    user_id: null,
+    actor_type: "system",
+    action_type: decision === "block" ? "image_policy_rejection" : "image_policy_review",
+    description: [
+      `Automated pin image moderation: ${decision}.`,
+      `images=${scans.length}`,
+      `categories=${[...new Set(scans.flatMap(s => s.categories))].join(",") || "unknown"}`,
+    ].join(" "),
+    target_table: "profiles",
+    target_id: userId,
+    ip_address: null,
+    user_agent: null,
+    created_at: new Date().toISOString(),
+  });
+  if (error) console.error("[PIN API] Image moderation audit failed:", error);
+}
+
+function imageErrorStatus(error: ImageModerationError): number {
+  if (error.code === "IMAGE_MODERATION_NOT_CONFIGURED" ||
+      error.code === "IMAGE_MODERATION_UNAVAILABLE" ||
+      error.code === "IMAGE_FETCH_FAILED") return 503;
+  if (error.code === "IMAGE_TOO_LARGE") return 413;
+  return 422;
+}
+
+/* ============================================================
    POST /api/pins
 ============================================================ */
 
@@ -843,11 +940,165 @@ export async function POST(
     }
 
     /* --------------------------------------------------------
-       8. Insert clean pin
+       8. Screen any attached photo BEFORE publishing
+
+       New Android app: stagedPhotoPaths (private bucket).
+       Old Android app: photoUrl (legacy compatibility only).
+       The latter is NOT a secure staging flow; require staging
+       at cutover via PIN_MODERATION_REQUIRE_STAGING=true.
     -------------------------------------------------------- */
 
-    const supabase =
-      getSupabaseAdmin();
+    const supabase = getSupabaseAdmin();
+    const stagedPaths = pin.stagedPhotoPaths ?? [];
+    const legacyUrl = pin.photoUrl ?? null;
+
+    if (new Set(stagedPaths).size !== stagedPaths.length ||
+        stagedPaths.some((path) => !validateOwnedPhotoPath(path, user.id))) {
+      return jsonError("Invalid staged photo path.", 400, {
+        code: "INVALID_STAGED_PHOTO_PATH",
+      });
+    }
+
+    if (stagedPaths.length > 0 && legacyUrl) {
+      return jsonError("Choose either staged photos or a legacy photo URL, not both.", 400, {
+        code: "PHOTO_INPUT_CONFLICT",
+      });
+    }
+
+    if (legacyUrl && REQUIRE_STAGING) {
+      return jsonError("Please update PIN & TELL to upload photos securely.", 426, {
+        code: "SECURE_PHOTO_UPLOAD_REQUIRED",
+      });
+    }
+
+    let stagedScans: StagedScan[] = [];
+    let legacyScan: ImageModerationResult | null = null;
+    try {
+      if (stagedPaths.length > 0) {
+        // Parallel scans reduce latency for multi-photo pins while the
+        // schema enforces a small fixed limit to bound memory / work.
+        stagedScans = await Promise.all(stagedPaths.map(scanStagedPhoto));
+      } else if (legacyUrl) {
+        // Compatibility mode: scans a PUBLIC image already uploaded by the
+        // old Android app. Only an Android update + RLS cutover fixes exposure.
+        legacyScan = await moderatePinImage(legacyUrl);
+      }
+    } catch (error) {
+      if (error instanceof ImageModerationError) {
+        return jsonError(error.message, imageErrorStatus(error), {
+          code: error.code,
+        });
+      }
+      console.error("[PIN API] Image screening failed:", error);
+      return jsonError("Unable to screen the photo. Please try again later.", 503, {
+        code: "IMAGE_MODERATION_UNAVAILABLE",
+      });
+    }
+
+    const imageScans = [
+      ...stagedScans.map((entry) => entry.scan),
+      ...(legacyScan ? [legacyScan] : []),
+    ];
+    const blocked = imageScans.some((scan) => scan.decision === "block");
+    const requiresReview = imageScans.some((scan) => scan.decision === "review");
+
+    if (blocked) {
+      await writeImageDecisionAudit(user.id, "block", imageScans);
+      // Automatic image rejection is not yet mapped to text-only strike types.
+      // Avoid incorrect penalties; the existing TEXT strike flow is untouched.
+      if (stagedPaths.length > 0) await safelyRemoveStagedPhotos(stagedPaths);
+      return jsonError("This photo cannot be published under our image policy.", 422, {
+        code: "IMAGE_POLICY_VIOLATION",
+        moderation: { blocked: true, strikeRecorded: false },
+      });
+    }
+
+    if (requiresReview) {
+      if (stagedPaths.length === 0) {
+        // Legacy photos cannot be privately held because they are already
+        // in a public bucket. Fail closed until the Android client upgrades.
+        await writeImageDecisionAudit(user.id, "review", imageScans);
+        return jsonError("This photo requires private review. Please use the updated app.", 422, {
+          code: "PRIVATE_IMAGE_REVIEW_REQUIRED",
+        });
+      }
+
+      const { data: queued, error: queueError } = await supabase
+        .from("pin_moderation_queue")
+        .insert({
+          user_id: user.id,
+          operation: "create",
+          submission_payload: {
+            title: pin.title,
+            description: pin.description ?? null,
+            latitude: pin.latitude,
+            longitude: pin.longitude,
+            category: pin.category,
+            subcategory: pin.subcategory ?? null,
+          },
+          staged_photo_paths: stagedPaths,
+          image_scan_results: imageScans.map((scan) => ({
+            decision: scan.decision,
+            categories: scan.categories,
+            scores: scan.scores,
+            sha256: scan.sha256,
+            model: scan.model,
+          })),
+          status: "pending",
+        })
+        .select("id")
+        .single();
+
+      if (queueError || !queued) {
+        console.error("[PIN API] Failed to queue photo review:", queueError);
+        return jsonError("Unable to submit the photo for review. Please retry.", 503, {
+          code: "IMAGE_REVIEW_QUEUE_FAILED",
+        });
+      }
+      await writeImageDecisionAudit(user.id, "review", imageScans);
+      return jsonSuccess({
+        status: "pending_review",
+        message: "Your photo pin is awaiting moderator approval.",
+        reviewId: queued.id,
+        pin: null,
+      }, 202);
+    }
+
+    // Only approved photos reach the existing public pin-photos bucket.
+    // If the database insert fails, roll back these new public objects.
+    const publishedPaths: string[] = [];
+    const publishedUrls: string[] = [];
+    if (stagedScans.length > 0) {
+      for (const entry of stagedScans) {
+        const extension = entry.scan.mimeType === "image/jpeg" ? "jpg" :
+          entry.scan.mimeType === "image/png" ? "png" : "webp";
+        const destinationPath = `${user.id}/${crypto.randomUUID()}.${extension}`;
+        const { error: uploadError } = await supabase.storage.from(PUBLIC_BUCKET)
+          .upload(destinationPath, entry.bytes, {
+            contentType: entry.scan.mimeType,
+            upsert: false,
+          });
+        if (uploadError) {
+          console.error("[PIN API] Approved photo could not be published:", uploadError);
+          await safelyRemovePublishedPhotos(publishedPaths);
+          return jsonError("Unable to publish the approved photo. Please retry.", 503, {
+            code: "APPROVED_PHOTO_UPLOAD_FAILED",
+          });
+        }
+        publishedPaths.push(destinationPath);
+        const { data: urlData } = supabase.storage.from(PUBLIC_BUCKET)
+          .getPublicUrl(destinationPath);
+        publishedUrls.push(urlData.publicUrl);
+      }
+    }
+
+    const photoUrlForDatabase = publishedUrls.length > 0
+      ? publishedUrls.join(",")
+      : legacyUrl;
+
+    /* --------------------------------------------------------
+       9. Insert approved pin
+    -------------------------------------------------------- */
 
     const {
       data:
@@ -882,8 +1133,7 @@ export async function POST(
             null,
 
           photo_url:
-            pin.photoUrl ??
-            null,
+            photoUrlForDatabase,
 
           creator_id:
             user.id,
@@ -915,6 +1165,7 @@ export async function POST(
         "[PIN API] Failed to create pin:",
         insertError,
       );
+      await safelyRemovePublishedPhotos(publishedPaths);
 
       return jsonError(
         "Unable to publish the pin right now. Please try again.",
@@ -928,8 +1179,14 @@ export async function POST(
       );
     }
 
+    if (stagedPaths.length > 0) {
+      // Best effort only: a successful public pin must remain published
+      // even if deleting the old private staged upload fails.
+      await safelyRemoveStagedPhotos(stagedPaths);
+    }
+
     /* --------------------------------------------------------
-       9. Audit successful pin creation
+       10. Audit successful pin creation
     -------------------------------------------------------- */
 
     const {
@@ -988,7 +1245,7 @@ export async function POST(
     }
 
     /* --------------------------------------------------------
-       10. Success
+       11. Success
     -------------------------------------------------------- */
 
     return jsonSuccess(
