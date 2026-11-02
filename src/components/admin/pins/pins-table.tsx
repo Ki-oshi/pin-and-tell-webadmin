@@ -223,6 +223,34 @@ function CategoryBadge({
   );
 }
 
+/* ============================================================
+   PIN LOCATION MAP
+   OpenStreetMap embeds require no additional client package.
+============================================================ */
+
+function getPinMapEmbedUrl(
+  latitude: number,
+  longitude: number,
+): string {
+  const latitudePadding = 0.0035;
+  const longitudePadding = 0.005;
+
+  const boundingBox = [
+    Math.max(-180, longitude - longitudePadding),
+    Math.max(-90, latitude - latitudePadding),
+    Math.min(180, longitude + longitudePadding),
+    Math.min(90, latitude + latitudePadding),
+  ].join(",");
+
+  const params = new URLSearchParams({
+    bbox: boundingBox,
+    layer: "mapnik",
+    marker: `${latitude},${longitude}`,
+  });
+
+  return `https://www.openstreetmap.org/export/embed.html?${params.toString()}`;
+}
+
 export default function PinsTable({
   pins,
   categories,
@@ -2055,116 +2083,126 @@ export default function PinsTable({
                   Location
                 </p>
 
+                {/* Embedded interactive map with the pin's exact marker */}
                 <div
                   className="
+                    overflow-hidden
+                    border
+                    border-slate-200
+                    bg-slate-100
+                  "
+                >
+                  <iframe
+                    key={selectedPin.id}
+                    title={`Location of pin #${selectedPin.id}: ${selectedPin.title}`}
+                    src={getPinMapEmbedUrl(
+                      selectedPin.latitude,
+                      selectedPin.longitude,
+                    )}
+                    loading="lazy"
+                    referrerPolicy="strict-origin-when-cross-origin"
+                    className="
+                      block
+                      h-[240px]
+                      w-full
+                      border-0
+                    "
+                  />
+                </div>
+
+                <div
+                  className="
+                    mt-3
                     flex
-                    items-start
-                    gap-3
+                    items-center
+                    gap-2
                   "
                 >
                   <MapPin
-                    size={16}
+                    size={14}
                     className="
-                      mt-0.5
                       shrink-0
                       text-[#A92F56]
                     "
                   />
-
-                  <div
+                  <p
                     className="
-                      min-w-0
-                      flex-1
+                      text-[11px]
+                      font-medium
+                      text-slate-600
                     "
                   >
-                    <p
-                      className="
-                        font-mono
-                        text-[11px]
-                        text-slate-700
-                      "
-                    >
-                      {selectedPin.latitude.toFixed(
-                        6,
-                      )}
-                      {", "}
-                      {selectedPin.longitude.toFixed(
-                        6,
-                      )}
-                    </p>
+                    Pinned location
+                  </p>
+                </div>
 
-                    <div
-                      className="
-                        mt-3
-                        flex
-                        flex-wrap
-                        gap-2
-                      "
-                    >
-                      <button
-                        type="button"
-                        onClick={() =>
-                          copyValue(
-                            "coordinates",
-                            `${selectedPin.latitude}, ${selectedPin.longitude}`,
-                          )
-                        }
-                        className="
-                          inline-flex
-                          h-8
-                          items-center
-                          gap-1.5
-                          border
-                          border-slate-200
-                          px-2.5
-                          text-[10px]
-                          font-medium
-                          text-slate-600
-                          hover:bg-slate-50
-                        "
-                      >
-                        {copied ===
-                        "coordinates" ? (
-                          <Check
-                            size={12}
-                          />
-                        ) : (
-                          <Copy
-                            size={12}
-                          />
-                        )}
+                {/* Keep the coordinate copy and external map controls */}
+                <div
+                  className="
+                    mt-3
+                    flex
+                    flex-wrap
+                    gap-2
+                  "
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      copyValue(
+                        "coordinates",
+                        `${selectedPin.latitude}, ${selectedPin.longitude}`,
+                      )
+                    }
+                    className="
+                      inline-flex
+                      h-8
+                      items-center
+                      gap-1.5
+                      border
+                      border-slate-200
+                      px-2.5
+                      text-[10px]
+                      font-medium
+                      text-slate-600
+                      transition
+                      hover:bg-slate-50
+                    "
+                  >
+                    {copied === "coordinates" ? (
+                      <Check size={12} />
+                    ) : (
+                      <Copy size={12} />
+                    )}
 
-                        Copy coordinates
-                      </button>
+                    {copied === "coordinates"
+                      ? "Copied!"
+                      : "Copy coordinates"}
+                  </button>
 
-                      <a
-                        href={`https://www.google.com/maps?q=${encodeURIComponent(
-                          `${selectedPin.latitude},${selectedPin.longitude}`,
-                        )}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="
-                          inline-flex
-                          h-8
-                          items-center
-                          gap-1.5
-                          border
-                          border-slate-200
-                          px-2.5
-                          text-[10px]
-                          font-medium
-                          text-slate-600
-                          hover:bg-slate-50
-                        "
-                      >
-                        <Navigation
-                          size={12}
-                        />
-
-                        Open map
-                      </a>
-                    </div>
-                  </div>
+                  <a
+                    href={`https://www.google.com/maps?q=${encodeURIComponent(
+                      `${selectedPin.latitude},${selectedPin.longitude}`,
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="
+                      inline-flex
+                      h-8
+                      items-center
+                      gap-1.5
+                      border
+                      border-slate-200
+                      px-2.5
+                      text-[10px]
+                      font-medium
+                      text-slate-600
+                      transition
+                      hover:bg-slate-50
+                    "
+                  >
+                    <Navigation size={12} />
+                    Open map
+                  </a>
                 </div>
               </div>
 
