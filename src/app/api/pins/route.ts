@@ -21,15 +21,13 @@ import {
 
 import {
   ImageModerationError,
-  moderatePinImage,
   moderatePinImageBytes,
   type ImageModerationResult,
 } from "@/lib/moderation/image-moderation";
 
-// Until the Android app has been updated, old public-photo submissions
-// can be scanned as a compatibility fallback. At the coordinated cutover,
-// set PIN_MODERATION_REQUIRE_STAGING=true to reject that unsafe path.
-const REQUIRE_STAGING = process.env.PIN_MODERATION_REQUIRE_STAGING === "true";
+// All new PHOTO pins must use private staging. Older Android clients using
+// public photoUrl must upgrade; publishing their photos would expose unscanned
+// bytes before either AI detector could evaluate them.
 const STAGING_BUCKET = "pin-photo-staging";
 const PUBLIC_BUCKET = "pin-photos";
 const MAX_STAGED_PHOTOS = 3;
@@ -40,6 +38,10 @@ const MAX_STAGED_PHOTOS = 3;
 
 export const runtime =
   "nodejs";
+
+// Allow the external vision model sufficient time to respond on deployments
+// that support extended function durations.
+export const maxDuration = 60;
 
 export const dynamic =
   "force-dynamic";
@@ -603,6 +605,8 @@ async function scanStagedPhoto(path: string): Promise<StagedScan> {
     );
   }
   const bytes = new Uint8Array(await data.arrayBuffer());
+  // ONE OpenRouter vision call evaluates all nine categories.
+  // Fail closed: any API error or invalid classification prevents publication.
   const scan = await moderatePinImageBytes(bytes);
   return { path, bytes, scan };
 }
@@ -619,32 +623,99 @@ async function safelyRemovePublishedPhotos(paths: string[]): Promise<void> {
   if (error) console.error("[PIN API] Approved-photo rollback failed:", error);
 }
 
+/**
+ * Three-way moderation policy, applied server-side AFTER the AI scan.
+ *
+ * BLOCK: AI says block, or it returns a clear, high-confidence policy
+ * violation while asking for review (e.g. exposed_breasts at 0.99).
+ * REVIEW: Any ambiguity, lower-confidence finding, or inconsistent output.
+ * ALLOW: An entirely clean, high-confidence result with no warnings.
+ *
+ * A reported confidence is a model estimate, NOT a guarantee. The strict
+ * override below should be adjusted alongside your actual content policy.
+ */
+type PhotoPolicyDecision = "allow" | "review" | "block";
+
+const MIN_CLEAN_PHOTO_CONFIDENCE = 0.95;
+const MIN_CONFIRMED_VIOLATION_CONFIDENCE = 0.99;
+
+function decidePhotoPolicy(scan: ImageModerationResult): PhotoPolicyDecision {
+  if (scan.decision === "block") return "block";
+
+  // Some models return "review" even for explicit, very confidently
+  // identified violations. Reject those automatically only when the
+  // scan itself is not uncertain and supplies concrete visual evidence.
+  // Do not override an inconsistent "allow" result into a block.
+  const confirmedViolation = scan.decision === "review" &&
+    !scan.uncertain &&
+    scan.findings.some((finding) =>
+      ["moderate", "high", "critical", "severe"].includes(
+        String(finding.severity).toLowerCase()
+      ) &&
+      Number.isFinite(finding.confidence) &&
+      finding.confidence >= MIN_CONFIRMED_VIOLATION_CONFIDENCE &&
+      typeof finding.violation === "string" &&
+      finding.violation.trim().length > 0 &&
+      typeof finding.evidence === "string" &&
+      finding.evidence.trim().length > 0
+    );
+  if (confirmedViolation) return "block";
+
+  const completelyClean = scan.decision === "allow" &&
+    !scan.flagged &&
+    !scan.uncertain &&
+    !scan.exposedBreastsVisible &&
+    scan.findings.length === 0 &&
+    scan.categories.length === 0 &&
+    Number.isFinite(scan.overallConfidence) &&
+    scan.overallConfidence >= MIN_CLEAN_PHOTO_CONFIDENCE;
+
+  return completelyClean ? "allow" : "review";
+}
+
 async function writeImageDecisionAudit(
   userId: string,
-  decision: "block" | "review",
+  decision: PhotoPolicyDecision,
   scans: ImageModerationResult[],
+  target?: { table: string; id: string | number },
 ): Promise<void> {
-  const { error } = await getSupabaseAdmin().from("logs").insert({
-    user_id: null,
-    actor_type: "system",
-    action_type: decision === "block" ? "image_policy_rejection" : "image_policy_review",
-    description: [
-      `Automated pin image moderation: ${decision}.`,
-      `images=${scans.length}`,
-      `categories=${[...new Set(scans.flatMap(s => s.categories))].join(",") || "unknown"}`,
-    ].join(" "),
-    target_table: "profiles",
-    target_id: userId,
-    ip_address: null,
-    user_agent: null,
-    created_at: new Date().toISOString(),
-  });
-  if (error) console.error("[PIN API] Image moderation audit failed:", error);
+  try {
+    const actionType = decision === "block" ? "image_policy_rejection" :
+      decision === "review" ? "image_policy_review" :
+      "image_policy_approval";
+    const { error } = await getSupabaseAdmin().from("logs").insert({
+      // This is a system action. User ID is held in the target or description;
+      // do not incorrectly attribute an AI decision to an administrator.
+      user_id: null,
+      actor_type: "system",
+      action_type: actionType,
+      description: [
+        `Automated pin image moderation: ${decision}.`,
+        `submitter_id=${userId}`,
+        `images=${scans.length}`,
+        `ai_decisions=${scans.map(s => s.decision).join(",")}`,
+        `models=${[...new Set(scans.map(s => s.model))].join(",")}`,
+        `categories=${[...new Set(scans.flatMap(s => s.categories))].join(",") || "none"}`,
+        `violation_codes=${[...new Set(scans.flatMap(s => s.findings.map(f => f.violation)))].join(",") || "none"}`,
+      ].join(" ").slice(0, 2000),
+      target_table: target?.table ?? "profiles",
+      target_id: String(target?.id ?? userId),
+      ip_address: null,
+      user_agent: null,
+      created_at: new Date().toISOString(),
+    });
+    if (error) console.error("[PIN API] Image moderation audit failed:", error);
+  } catch (error) {
+    // An audit failure must not change an already-committed moderation outcome.
+    console.error("[PIN API] Image moderation audit failed:", error);
+  }
 }
 
 function imageErrorStatus(error: ImageModerationError): number {
   if (error.code === "IMAGE_MODERATION_NOT_CONFIGURED" ||
       error.code === "IMAGE_MODERATION_UNAVAILABLE" ||
+      error.code === "IMAGE_MODERATION_INVALID_RESULT" ||
+      error.code === "IMAGE_MODERATION_PROVIDER_NOT_APPROVED" ||
       error.code === "IMAGE_FETCH_FAILED") return 503;
   if (error.code === "IMAGE_TOO_LARGE") return 413;
   return 422;
@@ -942,10 +1013,8 @@ export async function POST(
     /* --------------------------------------------------------
        8. Screen any attached photo BEFORE publishing
 
-       New Android app: stagedPhotoPaths (private bucket).
-       Old Android app: photoUrl (legacy compatibility only).
-       The latter is NOT a secure staging flow; require staging
-       at cutover via PIN_MODERATION_REQUIRE_STAGING=true.
+       All photo-bearing pins must use stagedPhotoPaths in a PRIVATE
+       bucket. Public photoUrl uploads are rejected with HTTP 426.
     -------------------------------------------------------- */
 
     const supabase = getSupabaseAdmin();
@@ -965,29 +1034,31 @@ export async function POST(
       });
     }
 
-    if (legacyUrl && REQUIRE_STAGING) {
+    if (legacyUrl) {
       return jsonError("Please update PIN & TELL to upload photos securely.", 426, {
         code: "SECURE_PHOTO_UPLOAD_REQUIRED",
       });
     }
 
-    let stagedScans: StagedScan[] = [];
-    let legacyScan: ImageModerationResult | null = null;
-    try {
-      if (stagedPaths.length > 0) {
-        // Parallel scans reduce latency for multi-photo pins while the
-        // schema enforces a small fixed limit to bound memory / work.
-        stagedScans = await Promise.all(stagedPaths.map(scanStagedPhoto));
-      } else if (legacyUrl) {
-        // Compatibility mode: scans a PUBLIC image already uploaded by the
-        // old Android app. Only an Android update + RLS cutover fixes exposure.
-        legacyScan = await moderatePinImage(legacyUrl);
+    // A public staging bucket would expose photos before screening; abort.
+    if (stagedPaths.length > 0) {
+      const { data: bucket, error: bucketError } =
+        await supabase.storage.getBucket(STAGING_BUCKET);
+      if (bucketError || !bucket || bucket.public !== false) {
+        console.error("[PIN API] Staging bucket unavailable or PUBLIC.");
+        return jsonError("Private photo screening is unavailable. Please contact support.", 503, {
+          code: "STAGING_BUCKET_NOT_PRIVATE",
+        });
       }
+    }
+
+    let stagedScans: StagedScan[] = [];
+    try {
+      // Each private photo receives one comprehensive OpenRouter scan.
+      stagedScans = await Promise.all(stagedPaths.map(scanStagedPhoto));
     } catch (error) {
       if (error instanceof ImageModerationError) {
-        return jsonError(error.message, imageErrorStatus(error), {
-          code: error.code,
-        });
+        return jsonError(error.message, imageErrorStatus(error), { code: error.code });
       }
       console.error("[PIN API] Image screening failed:", error);
       return jsonError("Unable to screen the photo. Please try again later.", 503, {
@@ -995,34 +1066,51 @@ export async function POST(
       });
     }
 
-    const imageScans = [
-      ...stagedScans.map((entry) => entry.scan),
-      ...(legacyScan ? [legacyScan] : []),
-    ];
-    const blocked = imageScans.some((scan) => scan.decision === "block");
-    const requiresReview = imageScans.some((scan) => scan.decision === "review");
+    // Each submitted photo must have a completed scan. Any inconsistency
+    // fails closed rather than reaching public Storage.
+    if (stagedScans.length !== stagedPaths.length) {
+      return jsonError("Photo screening did not complete.", 503, {
+        code: "IMAGE_MODERATION_INCOMPLETE",
+      });
+    }
+    const imageScans = stagedScans.map((entry) => entry.scan);
+    const policyDecisions = imageScans.map(decidePhotoPolicy);
+    // When multiple photos are attached, the strictest outcome wins.
+    // BLOCK > REVIEW > ALLOW; nothing is published unless ALL are clean.
+    const blocked = policyDecisions.includes("block");
+    const requiresReview = !blocked && policyDecisions.includes("review");
+    const blockingScans = imageScans.filter((_, index) =>
+      policyDecisions[index] === "block"
+    );
 
     if (blocked) {
       await writeImageDecisionAudit(user.id, "block", imageScans);
-      // Automatic image rejection is not yet mapped to text-only strike types.
+      // Automatic rejection does not incorrectly reuse TEXT strike types.
       // Avoid incorrect penalties; the existing TEXT strike flow is untouched.
       if (stagedPaths.length > 0) await safelyRemoveStagedPhotos(stagedPaths);
-      return jsonError("This photo cannot be published under our image policy.", 422, {
+      return jsonError("This photo was automatically rejected by the image safety policy.", 422, {
         code: "IMAGE_POLICY_VIOLATION",
-        moderation: { blocked: true, strikeRecorded: false },
+        status: "rejected",
+        moderation: {
+          blocked: true,
+          decision: "block",
+          aiDecisions: imageScans.map(scan => scan.decision),
+          categories: [...new Set(blockingScans.flatMap(scan => scan.categories))],
+          // Includes high-confidence violation overrides even if the model said REVIEW.
+          violations: blockingScans
+            .flatMap(scan => scan.findings.map(finding => ({
+              category: finding.category,
+              violation: finding.violation,
+              policyReason: finding.policyReason,
+              evidence: finding.evidence,
+              severity: finding.severity,
+            }))),
+          strikeRecorded: false,
+        },
       });
     }
 
     if (requiresReview) {
-      if (stagedPaths.length === 0) {
-        // Legacy photos cannot be privately held because they are already
-        // in a public bucket. Fail closed until the Android client upgrades.
-        await writeImageDecisionAudit(user.id, "review", imageScans);
-        return jsonError("This photo requires private review. Please use the updated app.", 422, {
-          code: "PRIVATE_IMAGE_REVIEW_REQUIRED",
-        });
-      }
-
       const { data: queued, error: queueError } = await supabase
         .from("pin_moderation_queue")
         .insert({
@@ -1037,12 +1125,18 @@ export async function POST(
             subcategory: pin.subcategory ?? null,
           },
           staged_photo_paths: stagedPaths,
-          image_scan_results: imageScans.map((scan) => ({
+          image_scan_results: stagedScans.map(({ scan }) => ({
             decision: scan.decision,
             categories: scan.categories,
             scores: scan.scores,
             sha256: scan.sha256,
             model: scan.model,
+            description: scan.description,
+            reason: scan.reason,
+            findings: scan.findings,
+            exposedBreastsVisible: scan.exposedBreastsVisible,
+            overallConfidence: scan.overallConfidence,
+            uncertain: scan.uncertain,
           })),
           status: "pending",
         })
@@ -1055,17 +1149,24 @@ export async function POST(
           code: "IMAGE_REVIEW_QUEUE_FAILED",
         });
       }
-      await writeImageDecisionAudit(user.id, "review", imageScans);
+      await writeImageDecisionAudit(user.id, "review", imageScans, {
+        table: "pin_moderation_queue",
+        id: queued.id,
+      });
       return jsonSuccess({
         status: "pending_review",
-        message: "Your photo pin is awaiting moderator approval.",
+        message: "Your photo pin requires moderator approval.",
         reviewId: queued.id,
+        moderation: {
+          decision: "review",
+          aiDecisions: imageScans.map(scan => scan.decision),
+        },
         pin: null,
       }, 202);
     }
 
-    // Only approved photos reach the existing public pin-photos bucket.
-    // If the database insert fails, roll back these new public objects.
+    // Only fully clean AI-allowed photos (or photo-less pins) reach here.
+    // A failed database insert rolls back any freshly published photo objects.
     const publishedPaths: string[] = [];
     const publishedUrls: string[] = [];
     if (stagedScans.length > 0) {
@@ -1185,6 +1286,15 @@ export async function POST(
       await safelyRemoveStagedPhotos(stagedPaths);
     }
 
+    // Record the AI auto-approval as a SYSTEM event distinct from the
+    // normal user pin_created event, after the pin exists successfully.
+    if (imageScans.length > 0) {
+      await writeImageDecisionAudit(user.id, "allow", imageScans, {
+        table: "pins",
+        id: createdPin.id,
+      });
+    }
+
     /* --------------------------------------------------------
        10. Audit successful pin creation
     -------------------------------------------------------- */
@@ -1208,7 +1318,9 @@ export async function POST(
             "pin_created",
 
           description:
-            "User created a map pin.",
+            imageScans.length > 0
+              ? "User created a map pin; photo screening auto-approved all attached images."
+              : "User created a map pin.",
 
           target_table:
             "pins",
@@ -1251,7 +1363,14 @@ export async function POST(
     return jsonSuccess(
       {
         message:
-          "Pin published successfully.",
+          "Pin automatically approved and published successfully.",
+
+        status: "published",
+
+        moderation: imageScans.length > 0 ? {
+          decision: "allow",
+          aiDecisions: imageScans.map(scan => scan.decision),
+        } : null,
 
         pin:
           createdPin,

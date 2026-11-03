@@ -391,6 +391,14 @@ function targetHref(
       log.target_id,
     );
 
+  // Old rejected Photo Reviews were incorrectly stored with target_table=pins
+  // even though their target_id was the moderation review UUID.
+  if (log.action_type === "pin_photo_rejected" &&
+      log.target_table === "pins" &&
+      /^[a-f0-9-]{36}$/i.test(log.target_id)) {
+    return "/admin/pin-image-reviews";
+  }
+
   switch (
     log.target_table
   ) {
@@ -399,6 +407,10 @@ function targetHref(
 
     case "pins":
       return `/admin/pins?q=${target}`;
+
+    // The Photo Reviews page does not yet expose a review-ID deep link.
+    case "pin_moderation_queue":
+      return "/admin/pin-image-reviews";
 
     case "reports":
       return `/admin/reports?q=${target}`;
@@ -844,7 +856,7 @@ export default function ActivityLogsTable({
             log.actor_type,
           ),
 
-          log.user_id,
+          log.actor_id,
 
           log.action_type,
 
@@ -1352,7 +1364,7 @@ export default function ActivityLogsTable({
                             >
                               {actorSubtitle(
                                 log.actor,
-                                log.user_id,
+                                log.actor_id,
                               )}
                             </p>
                           </div>
@@ -1931,7 +1943,7 @@ export default function ActivityLogsTable({
                     >
                       {actorSubtitle(
                         selectedLog.actor,
-                        selectedLog.user_id,
+                        selectedLog.actor_id,
                       )}
                     </p>
                   </div>
@@ -2452,7 +2464,7 @@ export default function ActivityLogsTable({
                   <DetailRow
                     label="Actor ID"
                     value={
-                      selectedLog.user_id ||
+                      selectedLog.actor_id ||
                       "—"
                     }
                     mono

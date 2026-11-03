@@ -39,6 +39,9 @@ export type AdminActivityLogRow = {
 
   user_id: string | null;
 
+  // Resolved admin/user ID for UI; may come from the moderation queue.
+  actor_id: string | null;
+
   actor_type: string | null;
 
   action_type: string;
@@ -91,7 +94,42 @@ const PAGE_SIZE =
   25;
 
 const UUID_REGEX =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const PHOTO_REVIEW_ACTIONS = new Set([
+  "pin_photo_approved",
+  "pin_photo_rejected",
+]);
+
+/** Supports both the new queue-targeted logs and the older pins-targeted ones. */
+function photoReviewIdFromLog(log: {
+  action_type: string;
+  target_table: string | null;
+  target_id: string | null;
+  description: string;
+}): string | null {
+  if (!PHOTO_REVIEW_ACTIONS.has(log.action_type)) return null;
+
+  if (log.target_table === "pin_moderation_queue" &&
+      log.target_id && UUID_REGEX.test(log.target_id)) {
+    return log.target_id;
+  }
+
+  const legacyId = log.description.match(/\breview_id=([a-f0-9-]{36})\b/i)?.[1];
+  return legacyId && UUID_REGEX.test(legacyId) ? legacyId : null;
+}
+
+/** Fallback when a moderation queue entry is no longer available. */
+function embeddedReviewerIdFromLog(log: {
+  action_type: string;
+  description: string;
+}): string | null {
+  if (!PHOTO_REVIEW_ACTIONS.has(log.action_type)) return null;
+  const embedded =
+    log.description.match(/\breviewer_id=([a-f0-9-]{36})\b/i)?.[1] ??
+    log.description.match(/^Admin reviewer ([a-f0-9-]{36})\b/i)?.[1];
+  return embedded && UUID_REGEX.test(embedded) ? embedded : null;
+}
 
 function safeCount(
   result: {
@@ -250,6 +288,7 @@ export async function getActivityLogsPageData({
    */
   let matchingActorIds:
     string[] = [];
+  let matchingAdminIds: string[] = [];
 
   if (
     normalizedSearch &&
@@ -315,6 +354,8 @@ export async function getActivityLogsPageData({
         adminsResult.error,
       );
     }
+
+    matchingAdminIds = (adminsResult.data ?? []).map((admin) => admin.id);
 
     matchingActorIds = [
       ...new Set([
@@ -405,6 +446,8 @@ export async function getActivityLogsPageData({
           [
             `user_id.eq.${normalizedSearch}`,
             `target_id.eq.${normalizedSearch}`,
+            `description.ilike.%reviewer_id=${normalizedSearch}%`,
+            `description.ilike.%Admin reviewer ${normalizedSearch}%`,
           ].join(","),
         );
     } else {
@@ -425,6 +468,14 @@ export async function getActivityLogsPageData({
             ",",
           )})`,
         );
+      }
+
+      // The stored user_id is null for Photo Reviews. Find those records
+      // using the reviewer identifier embedded by the server-side audit writer.
+      // Cap predicates so a broad admin-name search does not grow the URL too far.
+      for (const adminId of matchingAdminIds.slice(0, 20)) {
+        filters.push(`description.ilike.%reviewer_id=${adminId}%`);
+        filters.push(`description.ilike.%Admin reviewer ${adminId}%`);
       }
 
       logsQuery =
@@ -639,6 +690,46 @@ export async function getActivityLogsPageData({
       : logsResult.data ??
         [];
 
+  // Photo Review writes logs.user_id=null to avoid a possible profile FK.
+  // Resolve the actual reviewer through the committed moderation queue row.
+  // A single batched query covers the current page (at most 25 reviews).
+  const photoReviewIds = [
+    ...new Set(
+      rawLogs
+        .map(photoReviewIdFromLog)
+        .filter((id): id is string => id !== null),
+    ),
+  ];
+  const reviewerByReviewId = new Map<string, string>();
+
+  if (photoReviewIds.length > 0) {
+    const { data, error } = await supabase
+      .from("pin_moderation_queue")
+      .select("id,reviewer_id")
+      .in("id", photoReviewIds);
+
+    if (error) {
+      console.error("[ADMIN ACTIVITY LOGS] Failed to resolve photo reviewers:", error);
+      errors.push(error);
+    } else {
+      for (const review of data ?? []) {
+        if (review.reviewer_id) {
+          reviewerByReviewId.set(review.id, review.reviewer_id);
+        }
+      }
+    }
+  }
+
+  function resolvedActorId(log: (typeof rawLogs)[number]): string | null {
+    if (log.user_id) return log.user_id;
+    if (log.actor_type !== "admin") return null;
+    const reviewId = photoReviewIdFromLog(log);
+    return (
+      (reviewId ? reviewerByReviewId.get(reviewId) : null) ??
+      embeddedReviewerIdFromLog(log)
+    );
+  }
+
   /*
    * Determine which IDs belong to
    * admins and which belong to users
@@ -653,15 +744,13 @@ export async function getActivityLogsPageData({
           ) =>
             log.actor_type ===
               "admin" &&
-            Boolean(
-              log.user_id,
-            ),
+            Boolean(resolvedActorId(log)),
         )
         .map(
           (
             log,
           ) =>
-            log.user_id as string,
+            resolvedActorId(log) as string,
         ),
     ),
   ];
@@ -867,15 +956,16 @@ export async function getActivityLogsPageData({
         let actor:
           ActivityActor =
           null;
+        const actorId = resolvedActorId(log);
 
         if (
           log.actor_type ===
           "admin" &&
-          log.user_id
+          actorId
         ) {
           actor =
             admins.get(
-              log.user_id,
+              actorId,
             ) ??
             null;
         } else if (
@@ -906,6 +996,8 @@ export async function getActivityLogsPageData({
 
           user_id:
             log.user_id,
+
+          actor_id: actorId,
 
           actor_type:
             log.actor_type,
