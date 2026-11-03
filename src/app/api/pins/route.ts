@@ -1078,7 +1078,14 @@ export async function POST(
     // When multiple photos are attached, the strictest outcome wins.
     // BLOCK > REVIEW > ALLOW; nothing is published unless ALL are clean.
     const blocked = policyDecisions.includes("block");
-    const requiresReview = !blocked && policyDecisions.includes("review");
+    // When automatic photo approval is disabled, every non-blocked
+    // photo submission must go to manual administrator review.
+    // No-photo pins are unaffected.
+    const photoAutoApprovalEnabled =
+      process.env.PIN_IMAGE_AUTO_APPROVAL_ENABLED === "true";
+
+    const requiresReview = !blocked && imageScans.length > 0 &&
+      (!photoAutoApprovalEnabled || policyDecisions.includes("review"));
     const blockingScans = imageScans.filter((_, index) =>
       policyDecisions[index] === "block"
     );
