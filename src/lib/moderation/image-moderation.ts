@@ -282,8 +282,10 @@ function approvedModelForEnvironment(): { key: string; model: string } {
   if (!key) throw new ImageModerationError("IMAGE_MODERATION_NOT_CONFIGURED", "OpenRouter image filtering is not configured.");
   // NVIDIA's free trial provider prohibits personal information/faces.
   // This default is usable only with NON-PERSONAL test images in development.
-  if (process.env.NODE_ENV === "production" &&
-      (model.endsWith(":free") || process.env.OPENROUTER_PRODUCTION_IMAGE_APPROVED !== "true")) {
+  if (
+  process.env.NODE_ENV === "production" &&
+  process.env.OPENROUTER_PRODUCTION_IMAGE_APPROVED !== "true"
+) {
     throw new ImageModerationError(
       "IMAGE_MODERATION_PROVIDER_NOT_APPROVED",
       "Select and approve a privacy-compatible vision provider before screening real users' photos.",
