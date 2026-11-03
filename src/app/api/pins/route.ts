@@ -624,40 +624,41 @@ async function safelyRemovePublishedPhotos(paths: string[]): Promise<void> {
 }
 
 /**
- * Three-way moderation policy, applied server-side AFTER the AI scan.
- *
- * BLOCK: AI says block, or it returns a clear, high-confidence policy
- * violation while asking for review (e.g. exposed_breasts at 0.99).
- * REVIEW: Any ambiguity, lower-confidence finding, or inconsistent output.
- * ALLOW: An entirely clean, high-confidence result with no warnings.
- *
- * A reported confidence is a model estimate, NOT a guarantee. The strict
- * override below should be adjusted alongside your actual content policy.
+ * Three-way server policy. No photo becomes public before a valid AI scan.
+ * A model score is only an estimate: reject only narrowly defined violations,
+ * queue ambiguous/contradictory cases, auto-approve clean high-confidence scans.
  */
 type PhotoPolicyDecision = "allow" | "review" | "block";
 
 const MIN_CLEAN_PHOTO_CONFIDENCE = 0.95;
 const MIN_CONFIRMED_VIOLATION_CONFIDENCE = 0.99;
+const AUTO_REJECT_VIOLATION_CODES = new Set([
+  "exposed_genitals", "sexual_activity", "sexually_explicit_content",
+  "graphic_injury", "gore_or_mutilation", "self_harm_instructions",
+  "middle_finger",
+]);
 
 function decidePhotoPolicy(scan: ImageModerationResult): PhotoPolicyDecision {
   if (scan.decision === "block") return "block";
 
-  // Some models return "review" even for explicit, very confidently
-  // identified violations. Reject those automatically only when the
-  // scan itself is not uncertain and supplies concrete visual evidence.
-  // Do not override an inconsistent "allow" result into a block.
+  // Do not reject on a bare model score, a backstop inference, or a disputed
+  // gesture. Require an explicit high-severity violation with visual evidence.
   const confirmedViolation = scan.decision === "review" &&
     !scan.uncertain &&
+    scan.overallConfidence >= MIN_CLEAN_PHOTO_CONFIDENCE &&
     scan.findings.some((finding) =>
-      ["moderate", "high", "critical", "severe"].includes(
-        String(finding.severity).toLowerCase()
-      ) &&
+      finding.source === "model" &&
+      finding.severity === "high" &&
       Number.isFinite(finding.confidence) &&
       finding.confidence >= MIN_CONFIRMED_VIOLATION_CONFIDENCE &&
-      typeof finding.violation === "string" &&
-      finding.violation.trim().length > 0 &&
+      AUTO_REJECT_VIOLATION_CODES.has(finding.violation) &&
       typeof finding.evidence === "string" &&
-      finding.evidence.trim().length > 0
+      finding.evidence.trim().length > 0 &&
+      (finding.violation !== "middle_finger" || (
+        scan.gestureCheck?.status === "middle_finger" &&
+        scan.gestureCheck.confidence >= MIN_CONFIRMED_VIOLATION_CONFIDENCE &&
+        scan.gestureCheck.evidence.trim().length > 0
+      ))
     );
   if (confirmedViolation) return "block";
 
@@ -665,6 +666,8 @@ function decidePhotoPolicy(scan: ImageModerationResult): PhotoPolicyDecision {
     !scan.flagged &&
     !scan.uncertain &&
     !scan.exposedBreastsVisible &&
+    scan.gestureCheck?.status === "none" &&
+    scan.gestureCheck.confidence >= MIN_CLEAN_PHOTO_CONFIDENCE &&
     scan.findings.length === 0 &&
     scan.categories.length === 0 &&
     Number.isFinite(scan.overallConfidence) &&
@@ -697,6 +700,7 @@ async function writeImageDecisionAudit(
         `models=${[...new Set(scans.map(s => s.model))].join(",")}`,
         `categories=${[...new Set(scans.flatMap(s => s.categories))].join(",") || "none"}`,
         `violation_codes=${[...new Set(scans.flatMap(s => s.findings.map(f => f.violation)))].join(",") || "none"}`,
+        `gestures=${scans.map(s => s.gestureCheck?.status ?? "missing").join(",")}`,
       ].join(" ").slice(0, 2000),
       target_table: target?.table ?? "profiles",
       target_id: String(target?.id ?? userId),
@@ -1142,6 +1146,7 @@ export async function POST(
             reason: scan.reason,
             findings: scan.findings,
             exposedBreastsVisible: scan.exposedBreastsVisible,
+            gestureCheck: scan.gestureCheck ?? null,
             overallConfidence: scan.overallConfidence,
             uncertain: scan.uncertain,
           })),

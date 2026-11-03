@@ -73,6 +73,13 @@ export type ImageModerationResult = {
   overallConfidence: number;
   uncertain: boolean;
   exposedBreastsVisible: boolean;
+  // An independent structured hand check in the same vision-model response.
+  // Optional for compatibility with historical saved scan records.
+  gestureCheck?: {
+    status: "none" | "middle_finger" | "other_offensive" | "uncertain";
+    confidence: number;
+    evidence: string;
+  };
   reason: string;
 };
 
@@ -105,6 +112,16 @@ const CLASSIFICATION_SCHEMA = {
       overall_confidence: { type: "number" },
       uncertain: { type: "boolean" },
       exposed_breasts_visible: { type: "boolean" },
+      gesture_check: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          status: { type: "string", enum: ["none", "middle_finger", "other_offensive", "uncertain"] },
+          confidence: { type: "number" },
+          evidence: { type: "string" },
+        },
+        required: ["status", "confidence", "evidence"],
+      },
       findings: {
         type: "array",
         items: {
@@ -121,7 +138,7 @@ const CLASSIFICATION_SCHEMA = {
         },
       },
     },
-    required: ["description", "overall_confidence", "uncertain", "exposed_breasts_visible", "findings"],
+    required: ["description", "overall_confidence", "uncertain", "exposed_breasts_visible", "gesture_check", "findings"],
   },
 } as const;
 
@@ -134,9 +151,17 @@ Evaluate ALL of these categories:
 - self-harm: depicted self-injury.
 - self-harm/intent: ONLY where clearly explicit text or imagery indicates self-harm intent, not guesses about mental state.
 - self-harm/instructions: visible text or illustrations teaching self-injury methods; do not invent hidden instructions.
-- offensive_gesture: visibly raised middle finger or similarly unmistakable insulting gesture.
+- offensive_gesture: visibly raised middle finger or similarly unmistakable insulting gesture. Inspect all visible hands, including small, background, partially obscured and selfie hands. A raised middle finger means the center finger is extended while adjacent fingers are folded; do not confuse it with peace signs, pointing, thumbs-up, normal open hands, or hands holding objects.
 - hate_symbol: recognizable hateful/extremist symbols in the image; historical/documentary context can be ambiguous.
 - other_unsafe: other clearly concerning inappropriate imagery not captured above.
+
+MANDATORY HAND-GESTURE CHECK (separate from the findings list):
+- gesture_check.status = "middle_finger" ONLY if the raised center finger is visually identifiable; include where in the photo it occurs and what is visible in gesture_check.evidence. Also add an offensive_gesture / middle_finger finding with matching evidence.
+- gesture_check.status = "other_offensive" for a visibly unmistakable other insulting gesture, and add the corresponding other_offensive_gesture finding.
+- gesture_check.status = "uncertain" if a possible rude hand gesture is obscured, small, blurred, or otherwise ambiguous; set uncertain=true. Never auto-approve an uncertain gesture.
+- gesture_check.status = "none" only after checking all visible hands and finding no offensive gesture; when no hands are visible, this also counts as none.
+- Always provide gesture_check.confidence (0..1) and a short gesture_check.evidence, even for none. Do not guess a hand gesture when there is insufficient evidence.
+- Ensure gesture_check and findings agree. Do not claim that the image is clean when either a gesture or another violation is observed.
 
 Report findings only when grounded in visible evidence. If a category is absent, omit it. For each finding, supply a short specific visual evidence description, severity (low/moderate/high), and a confidence estimate 0..1. Do not claim to know intent from appearance alone. Use uncertain=true if visibility, interpretation, OCR, or context is unclear. Describe the actual image neutrally in <=220 characters without identifying people. If safe and clear, findings must be empty, uncertain=false, and overall_confidence must indicate how confident you are the image was assessed. Never invent a violation to satisfy the request.
 For every finding, report a SPECIFIC "violation" code, not just a broad category.
@@ -190,6 +215,11 @@ type ParsedClassification = {
   overallConfidence: number;
   uncertain: boolean;
   exposedBreastsVisible: boolean;
+  gestureCheck: {
+    status: "none" | "middle_finger" | "other_offensive" | "uncertain";
+    confidence: number;
+    evidence: string;
+  };
   findings: ImageFinding[];
 };
 
@@ -216,6 +246,21 @@ function parseClassification(payload: unknown): ParsedClassification {
       !Array.isArray(p.findings) || p.findings.length > IMAGE_CATEGORIES.length) {
     throw new Error("Malformed classification header");
   }
+  const gesture = p.gesture_check;
+  if (!gesture || typeof gesture !== "object" || Array.isArray(gesture)) {
+    throw new Error("Missing gesture check");
+  }
+  const g = gesture as Record<string, unknown>;
+  if (!["none", "middle_finger", "other_offensive", "uncertain"].includes(String(g.status)) ||
+      !finite01(g.confidence) ||
+      typeof g.evidence !== "string" || g.evidence.length > 400) {
+    throw new Error("Malformed gesture check");
+  }
+  const gestureCheck = {
+    status: g.status as ParsedClassification["gestureCheck"]["status"],
+    confidence: g.confidence,
+    evidence: g.evidence.trim().slice(0, 300),
+  };
   const findings: ImageFinding[] = [];
   const seen = new Set<string>();
   for (const item of p.findings) {
@@ -244,36 +289,58 @@ function parseClassification(payload: unknown): ParsedClassification {
     overallConfidence: p.overall_confidence,
     uncertain: p.uncertain,
     exposedBreastsVisible: p.exposed_breasts_visible,
+    gestureCheck,
     findings,
   };
 }
 
-/** Pure server policy: high-confidence severe content blocks, uncertain goes to humans. */
+/** Pure server policy: only corroborated, high-confidence clear violations block. */
 export function decideImageModeration(result: ParsedClassification): {
   decision: ImageModerationDecision;
   reason: string;
 } {
-  // Only narrow, clearly prohibited categories can auto-block.  These are model
-  // estimates, not calibrated probabilities; use conservative thresholds.
-  const severe = result.findings.filter((finding) =>
-    finding.severity === "high" && finding.confidence >= 0.97 &&
-    ["sexual", "violence/graphic", "self-harm/instructions"].includes(finding.category),
+  // These explicit violations may qualify for auto-rejection. Ambiguous
+  // nudity, contextual violence and hate symbols are left for an admin.
+  const autoRejectCodes = new Set<ImageViolationCode>([
+    "exposed_genitals", "sexual_activity", "sexually_explicit_content",
+    "graphic_injury", "gore_or_mutilation", "self_harm_instructions",
+  ]);
+  const severeFindings = result.findings.filter((finding) =>
+    finding.severity === "high" && finding.confidence >= 0.99 &&
+    finding.evidence.trim().length > 0 && autoRejectCodes.has(finding.violation),
   );
-  if (severe.length > 0 && !result.uncertain && result.overallConfidence >= 0.95) {
+
+  // For the frequently missed middle-finger case, require both the dedicated
+  // gesture audit and a matching explicit finding before auto-rejecting.
+  // Contradictory signals require manual review, not a wrongful rejection.
+  const clearMiddleFinger = result.gestureCheck.status === "middle_finger" &&
+    result.gestureCheck.confidence >= 0.99 &&
+    result.gestureCheck.evidence.length > 0 &&
+    result.findings.some((finding) =>
+      finding.violation === "middle_finger" && finding.severity === "high" &&
+      finding.confidence >= 0.99 && finding.evidence.trim().length > 0,
+    );
+
+  if (!result.uncertain && result.overallConfidence >= 0.95 &&
+      (severeFindings.length > 0 || clearMiddleFinger)) {
     return {
       decision: "block",
-      reason: `High-confidence severe visual policy finding: ${severe.map((x) => x.category).join(", ")}.`,
+      reason: clearMiddleFinger
+        ? "Confirmed offensive middle-finger gesture."
+        : `High-confidence explicit policy violation: ${severeFindings.map((f) => f.violation).join(", ")}.`,
     };
   }
-  // Auto-publication is permitted only for a clean, confident classification.
-  // The score is a model estimate (not a calibrated probability of safety).
-  if (result.uncertain || result.overallConfidence < 0.95) {
-    return { decision: "review", reason: "Image screening is uncertain or below the 0.95 auto-approval threshold; human review required." };
+
+  if (result.uncertain || result.overallConfidence < 0.95 ||
+      result.gestureCheck.status === "uncertain" ||
+      result.gestureCheck.confidence < 0.95) {
+    return { decision: "review", reason: "Image or hand-gesture screening is uncertain; human review required." };
   }
-  if (result.findings.length > 0 || result.exposedBreastsVisible) {
+  if (result.findings.length > 0 || result.exposedBreastsVisible ||
+      result.gestureCheck.status !== "none") {
     return { decision: "review", reason: "Possible visual policy violation; human review required." };
   }
-  return { decision: "allow", reason: "No visual policy violations reported; automatic approval criteria met." };
+  return { decision: "allow", reason: "No visual violations or offensive gestures reported; high-confidence screening complete." };
 }
 
 function approvedModelForEnvironment(): { key: string; model: string } {
@@ -346,6 +413,23 @@ async function scanImageBytes(bytes: Buffer, mimeType: SupportedMimeType): Promi
   const descriptionNegated = /\b(?:no|without|not\s+showing)\s+(?:clearly\s+)?(?:bare|exposed|visible)\s+(?:breasts?|nipples?|areolas?)\b/i.test(classification.description);
   const explicitlyVisible = classification.exposedBreastsVisible || (descriptionHint && !descriptionNegated);
   const findings = [...classification.findings];
+  // A contradictory gesture audit may not be used to auto-publish or
+  // auto-reject. Give the reviewer the specific flagged gesture instead.
+  const gestureCode = classification.gestureCheck.status === "middle_finger"
+    ? "middle_finger"
+    : classification.gestureCheck.status === "other_offensive"
+      ? "other_offensive_gesture" : null;
+  if (gestureCode && !findings.some((f) => f.violation === gestureCode)) {
+    findings.push({
+      category: "offensive_gesture",
+      violation: gestureCode,
+      confidence: 0,
+      source: "consistency_backstop",
+      severity: "moderate",
+      evidence: classification.gestureCheck.evidence || "Gesture audit flagged an offensive hand gesture; verify visually.",
+      policyReason: VIOLATION_RULES[gestureCode].policyReason,
+    });
+  }
   if (explicitlyVisible && !findings.some(f => f.violation === "exposed_breasts")) {
     findings.push({
       category: "sexual", violation: "exposed_breasts",
@@ -357,7 +441,13 @@ async function scanImageBytes(bytes: Buffer, mimeType: SupportedMimeType): Promi
   }
   // A model may describe an unsafe scene but accidentally omit the structured
   // finding. Do not auto-publish a contradictory response; escalate to humans.
-  const narrativeConcern = /\b(?:middle[- ]finger|obscene gesture|flipping the bird|explicit nudity|full nudity|fully nude|completely naked|(?:nude|naked|unclothed|topless) (?:person|woman|man|adult|figure)|visible genitals?|exposed genitals?|graphic gore|mutilation|severe bloody injury|bloodied corpse|hate symbol|swastika|self[- ]harm instructions?)\b/i.test(classification.description);
+  // Handle negative descriptions such as "no middle finger" without
+  // hiding another concern mentioned in the same sentence.
+  const gestureMention = /\b(?:middle[- ]finger|obscene gesture|flipping the bird)\b/i.test(classification.description) &&
+    !/\b(?:no|without|not showing|no visible|not displaying)\s+(?:offensive\s+)?(?:middle[- ]finger|obscene gesture|flipping the bird)\b/i.test(classification.description);
+  const otherConcernMention = /\b(?:explicit nudity|full nudity|fully nude|completely naked|(?:nude|naked|unclothed|topless) (?:person|woman|man|adult|figure)|visible genitals?|exposed genitals?|graphic gore|mutilation|severe bloody injury|bloodied corpse|hate symbol|swastika|self[- ]harm instructions?)\b/i.test(classification.description) &&
+    !/\b(?:no|without|not showing|no visible)\s+(?:explicit|full|graphic|exposed|visible)?\s*(?:nudity|genitals?|gore|hate symbol)\b/i.test(classification.description);
+  const narrativeConcern = gestureMention || otherConcernMention;
   const decision: ImageModerationDecision = rawPolicy.decision === "allow" && (explicitlyVisible || narrativeConcern)
     ? "review" : rawPolicy.decision;
   const reason = explicitlyVisible && decision === "review"
@@ -387,6 +477,7 @@ async function scanImageBytes(bytes: Buffer, mimeType: SupportedMimeType): Promi
     overallConfidence: classification.overallConfidence,
     uncertain: classification.uncertain,
     exposedBreastsVisible: explicitlyVisible,
+    gestureCheck: classification.gestureCheck,
     reason,
   };
 }
