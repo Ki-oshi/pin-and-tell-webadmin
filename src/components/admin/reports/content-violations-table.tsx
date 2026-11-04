@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -224,7 +225,7 @@ function SeverityBadge({
         border
         px-2
         py-1
-        text-[10px]
+        text-[11px]
         font-semibold
         uppercase
         tracking-[0.05em]
@@ -287,7 +288,7 @@ function AccountStatusBadge({
         border
         px-2
         py-1
-        text-[10px]
+        text-[11px]
         font-semibold
         uppercase
         tracking-[0.05em]
@@ -317,19 +318,7 @@ function EnforcementBadge({
   ) {
     return (
       <span
-        className="
-          inline-flex
-          items-center
-          gap-1.5
-          border
-          border-red-200
-          bg-red-50
-          px-2
-          py-1
-          text-[10px]
-          font-semibold
-          text-red-700
-        "
+        className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-700 rounded-full"
       >
         <ShieldAlert
           size={11}
@@ -345,19 +334,7 @@ function EnforcementBadge({
   ) {
     return (
       <span
-        className="
-          inline-flex
-          items-center
-          gap-1.5
-          border
-          border-amber-200
-          bg-amber-50
-          px-2
-          py-1
-          text-[10px]
-          font-semibold
-          text-amber-700
-        "
+        className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 rounded-full"
       >
         <Ban
           size={11}
@@ -370,17 +347,7 @@ function EnforcementBadge({
 
   return (
     <span
-      className="
-        inline-flex
-        border
-        border-slate-200
-        bg-slate-50
-        px-2
-        py-1
-        text-[10px]
-        font-medium
-        text-slate-600
-      "
+      className="inline-flex border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-600 rounded-full"
     >
       {row.enforcement}
     </span>
@@ -397,6 +364,8 @@ export default function ContentViolationsTable({
   activeWindowDays,
   hasErrors,
 }: ContentViolationsTableProps) {
+  const violationDialogRef = useRef<HTMLElement | null>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
   const [
     query,
     setQuery,
@@ -509,8 +478,18 @@ export default function ContentViolationsTable({
       ],
     );
 
+  useEffect(() => {
+    if (!selectedUserId) return;
+    restoreFocusRef.current = document.activeElement as HTMLElement | null;
+    const frame = window.requestAnimationFrame(() => violationDialogRef.current?.focus());
+    return () => {
+      window.cancelAnimationFrame(frame);
+      restoreFocusRef.current?.focus();
+    };
+  }, [selectedUserId]);
+
   /* =======================================================
-     DRAWER BODY LOCK
+     MODAL BODY LOCK
   ======================================================= */
 
   useEffect(() => {
@@ -532,6 +511,17 @@ export default function ContentViolationsTable({
       event:
         KeyboardEvent,
     ) {
+      if (event.key === "Tab" && violationDialogRef.current) {
+        const elements = Array.from(violationDialogRef.current.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
+        )).filter((element) => element.getClientRects().length > 0);
+        if (elements.length > 0) {
+          const first = elements[0];
+          const last = elements[elements.length - 1];
+          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+          else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+        }
+      }
       if (
         event.key ===
         "Escape"
@@ -633,53 +623,23 @@ export default function ContentViolationsTable({
 
   return (
     <>
-      <section
-        className="
-          border
-          border-slate-200
-          bg-white
-        "
-      >
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-950/[0.03]">
         {/* =========================
             HEADER
         ========================== */}
 
         <div
-          className="
-            border-b
-            border-slate-200
-            px-5
-            py-5
-          "
+          className="border-b border-slate-100 px-5 py-5 sm:px-6"
         >
           <div
-            className="
-              flex
-              flex-col
-              gap-4
-              xl:flex-row
-              xl:items-start
-              xl:justify-between
-            "
+            className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between"
           >
             <div>
               <div
-                className="
-                  flex
-                  items-center
-                  gap-2
-                "
+                className="flex items-center gap-2"
               >
                 <div
-                  className="
-                    flex
-                    h-9
-                    w-9
-                    items-center
-                    justify-center
-                    bg-[#A92F56]/[0.08]
-                    text-[#A92F56]
-                  "
+                  className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#A92F56]/[0.08] text-[#A92F56]"
                 >
                   <ShieldAlert
                     size={16}
@@ -691,22 +651,14 @@ export default function ContentViolationsTable({
 
                 <div>
                   <h2
-                    className="
-                      text-sm
-                      font-semibold
-                      text-slate-950
-                    "
+                    className="text-sm font-bold text-slate-950"
                   >
                     Content
                     Violations
                   </h2>
 
                   <p
-                    className="
-                      mt-0.5
-                      text-[10px]
-                      text-slate-400
-                    "
+                    className="mt-0.5 text-[11px] text-slate-400"
                   >
                     Automated
                     moderation
@@ -716,13 +668,7 @@ export default function ContentViolationsTable({
               </div>
 
               <p
-                className="
-                  mt-3
-                  max-w-[720px]
-                  text-xs
-                  leading-5
-                  text-slate-500
-                "
+                className="mt-3 max-w-[720px] text-xs leading-5 text-slate-500"
               >
                 Review users
                 whose submitted
@@ -741,21 +687,10 @@ export default function ContentViolationsTable({
             </div>
 
             <div
-              className="
-                border
-                border-slate-200
-                bg-slate-50
-                px-3
-                py-2
-                text-[10px]
-                text-slate-500
-              "
+              className="border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-500"
             >
               <span
-                className="
-                  font-semibold
-                  text-slate-700
-                "
+                className="font-semibold text-slate-700"
               >
                 Moderation source:
               </span>{" "}
@@ -771,15 +706,7 @@ export default function ContentViolationsTable({
 
         {hasErrors && (
           <div
-            className="
-              border-b
-              border-amber-200
-              bg-amber-50
-              px-5
-              py-3
-              text-xs
-              text-amber-800
-            "
+            className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-800"
           >
             Some automated
             moderation data could
@@ -794,18 +721,11 @@ export default function ContentViolationsTable({
         ========================== */}
 
         <div
-          className="
-            grid
-            border-b
-            border-slate-200
-            sm:grid-cols-2
-            xl:grid-cols-4
-          "
+          className="grid gap-3 border-b border-slate-100 bg-slate-50/40 p-4 sm:grid-cols-2 xl:grid-cols-4"
         >
           {summaryCards.map(
             (
               card,
-              index,
             ) => {
               const Icon =
                 card.icon;
@@ -815,34 +735,14 @@ export default function ContentViolationsTable({
                   key={
                     card.label
                   }
-                  className={`
-                    p-4
-                    ${
-                      index <
-                      summaryCards.length -
-                        1
-                        ? "border-b border-slate-200 sm:border-b-0 sm:border-r"
-                        : ""
-                    }
-                  `}
+                  className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-950/[0.02]"
                 >
                   <div
-                    className="
-                      flex
-                      items-start
-                      justify-between
-                      gap-3
-                    "
+                    className="flex items-start justify-between gap-3"
                   >
                     <div>
                       <p
-                        className="
-                          text-[10px]
-                          font-semibold
-                          uppercase
-                          tracking-[0.08em]
-                          text-slate-400
-                        "
+                        className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400"
                       >
                         {
                           card.label
@@ -850,13 +750,7 @@ export default function ContentViolationsTable({
                       </p>
 
                       <p
-                        className="
-                          mt-2
-                          text-xl
-                          font-semibold
-                          tracking-[-0.03em]
-                          text-slate-950
-                        "
+                        className="mt-2 text-xl font-semibold tracking-[-0.03em] text-slate-950"
                       >
                         {formatNumber(
                           card.value,
@@ -864,13 +758,7 @@ export default function ContentViolationsTable({
                       </p>
 
                       <p
-                        className="
-                          mt-1
-                          max-w-[190px]
-                          text-[9px]
-                          leading-4
-                          text-slate-400
-                        "
+                        className="mt-1 max-w-[190px] text-[11px] leading-4 text-slate-400"
                       >
                         {
                           card.description
@@ -905,35 +793,14 @@ export default function ContentViolationsTable({
         ========================== */}
 
         <div
-          className="
-            flex
-            flex-col
-            gap-3
-            border-b
-            border-slate-200
-            p-4
-            lg:flex-row
-            lg:items-center
-            lg:justify-between
-          "
+          className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row lg:items-center lg:justify-between sm:px-5"
         >
           <div
-            className="
-              relative
-              w-full
-              lg:max-w-[360px]
-            "
+            className="relative w-full lg:max-w-[360px]"
           >
             <Search
               size={15}
-              className="
-                pointer-events-none
-                absolute
-                left-3
-                top-1/2
-                -translate-y-1/2
-                text-slate-400
-              "
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
             />
 
             <input
@@ -949,25 +816,9 @@ export default function ContentViolationsTable({
                     .value,
                 )
               }
+              aria-label="Search content violations"
               placeholder="Search user, category or status..."
-              className="
-                h-10
-                w-full
-                border
-                border-slate-200
-                bg-white
-                pl-9
-                pr-9
-                text-xs
-                text-slate-800
-                outline-none
-                transition
-                placeholder:text-slate-400
-                hover:border-slate-300
-                focus:border-[#CC3A67]
-                focus:ring-2
-                focus:ring-[#FDC1C9]/30
-              "
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-9 text-xs text-slate-800 outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-[#CC3A67] focus:ring-2 focus:ring-[#FDC1C9]/30 focus-visible:ring-2 focus-visible:ring-[#A92F56]/20"
             />
 
             {query && (
@@ -978,19 +829,7 @@ export default function ContentViolationsTable({
                     "",
                   )
                 }
-                className="
-                  absolute
-                  right-2
-                  top-1/2
-                  flex
-                  h-7
-                  w-7
-                  -translate-y-1/2
-                  items-center
-                  justify-center
-                  text-slate-400
-                  hover:text-slate-700
-                "
+                className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center text-slate-400 hover:text-slate-700"
                 aria-label="Clear violation search"
               >
                 <X
@@ -1001,6 +840,7 @@ export default function ContentViolationsTable({
           </div>
 
           <select
+            aria-label="Filter violation history"
             value={
               filter
             }
@@ -1014,19 +854,7 @@ export default function ContentViolationsTable({
                   ViolationFilter,
               )
             }
-            className="
-              h-10
-              border
-              border-slate-200
-              bg-white
-              px-3
-              text-xs
-              font-medium
-              text-slate-600
-              outline-none
-              hover:border-slate-300
-              focus:border-[#CC3A67]
-            "
+            className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 outline-none hover:border-slate-300 focus:border-[#CC3A67] rounded-xl focus-visible:ring-2 focus-visible:ring-[#A92F56]/20"
           >
             <option
               value="all"
@@ -1054,26 +882,35 @@ export default function ContentViolationsTable({
 
         {filteredRows.length >
         0 ? (
-          <div
-            className="
-              overflow-x-auto
-            "
-          >
+          <>
+            <div className="grid gap-3 p-3 md:hidden sm:p-4">
+              {filteredRows.map((row) => (
+                <article key={row.user_id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-bold text-slate-900">{personName(row)}</p>
+                      <p className="mt-1 truncate text-[11px] text-slate-500">{row.profile.username ? `@${row.profile.username}` : row.user_id}</p>
+                    </div>
+                    <SeverityBadge severity={row.max_severity} />
+                  </div>
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <AccountStatusBadge status={row.account_status} />
+                    <EnforcementBadge row={row} />
+                  </div>
+                  <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
+                    <p className="text-[11px] text-slate-500"><strong className="text-slate-900">{row.active_strikes}</strong> active strikes</p>
+                    <button type="button" onClick={() => setSelectedUserId(row.user_id)} className="inline-flex items-center gap-1.5 rounded-lg border border-[#A92F56]/20 bg-[#A92F56]/[0.06] px-3 py-2 text-xs font-bold text-[#A92F56]"><Eye size={13} />View history</button>
+                  </div>
+                </article>
+              ))}
+            </div>
+            <div className="hidden overflow-x-auto md:block">
             <table
-              className="
-                w-full
-                min-w-[1050px]
-                border-collapse
-                text-left
-              "
+              className="w-full min-w-[1050px] border-collapse text-left"
             >
               <thead>
                 <tr
-                  className="
-                    border-b
-                    border-slate-100
-                    bg-slate-50/70
-                  "
+                  className="border-b border-slate-100 bg-slate-50/80"
                 >
                   {[
                     "User",
@@ -1092,17 +929,7 @@ export default function ContentViolationsTable({
                           heading ||
                           "action"
                         }
-                        className="
-                          px-4
-                          py-3
-                          text-[10px]
-                          font-semibold
-                          uppercase
-                          tracking-[0.08em]
-                          text-slate-400
-                          first:pl-5
-                          last:pr-5
-                        "
+                        className="px-4 py-3.5 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500 first:pl-5 last:pr-5"
                       >
                         {
                           heading
@@ -1122,40 +949,18 @@ export default function ContentViolationsTable({
                       key={
                         row.user_id
                       }
-                      className="
-                        border-b
-                        border-slate-100
-                        transition-colors
-                        last:border-b-0
-                        hover:bg-slate-50/60
-                      "
+                      className="border-b border-slate-100 transition-colors last:border-b-0 hover:bg-[#FDF5F7]/55"
                     >
                       {/* USER */}
 
                       <td
-                        className="
-                          px-5
-                          py-3.5
-                        "
+                        className="px-5 py-3.5"
                       >
                         <div
-                          className="
-                            flex
-                            items-center
-                            gap-3
-                          "
+                          className="flex items-center gap-3"
                         >
                           <div
-                            className="
-                              flex
-                              h-9
-                              w-9
-                              shrink-0
-                              items-center
-                              justify-center
-                              bg-[#A92F56]/[0.08]
-                              text-[#A92F56]
-                            "
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#A92F56]/[0.08] text-[#A92F56]"
                           >
                             <User
                               size={15}
@@ -1163,18 +968,10 @@ export default function ContentViolationsTable({
                           </div>
 
                           <div
-                            className="
-                              min-w-0
-                            "
+                            className="min-w-0"
                           >
                             <p
-                              className="
-                                max-w-[180px]
-                                truncate
-                                text-xs
-                                font-semibold
-                                text-slate-900
-                              "
+                              className="max-w-[180px] truncate text-xs font-semibold text-slate-900"
                             >
                               {personName(
                                 row,
@@ -1182,13 +979,7 @@ export default function ContentViolationsTable({
                             </p>
 
                             <p
-                              className="
-                                mt-0.5
-                                max-w-[180px]
-                                truncate
-                                text-[9px]
-                                text-slate-400
-                              "
+                              className="mt-0.5 max-w-[180px] truncate text-[11px] text-slate-400"
                             >
                               {row.profile
                                 .username
@@ -1202,24 +993,13 @@ export default function ContentViolationsTable({
                       {/* STRIKES */}
 
                       <td
-                        className="
-                          px-4
-                          py-3.5
-                        "
+                        className="px-4 py-3.5"
                       >
                         <div
-                          className="
-                            flex
-                            items-center
-                            gap-2
-                          "
+                          className="flex items-center gap-2"
                         >
                           <span
-                            className="
-                              text-sm
-                              font-semibold
-                              text-slate-900
-                            "
+                            className="text-sm font-semibold text-slate-900"
                           >
                             {
                               row.active_strikes
@@ -1230,9 +1010,7 @@ export default function ContentViolationsTable({
                             5 && (
                             <AlertTriangle
                               size={13}
-                              className="
-                                text-amber-500
-                              "
+                              className="text-amber-500"
                             />
                           )}
                         </div>
@@ -1241,10 +1019,7 @@ export default function ContentViolationsTable({
                       {/* SEVERITY */}
 
                       <td
-                        className="
-                          px-4
-                          py-3.5
-                        "
+                        className="px-4 py-3.5"
                       >
                         <SeverityBadge
                           severity={
@@ -1256,12 +1031,7 @@ export default function ContentViolationsTable({
                       {/* LAST VIOLATION */}
 
                       <td
-                        className="
-                          px-4
-                          py-3.5
-                          text-[11px]
-                          text-slate-500
-                        "
+                        className="px-4 py-3.5 text-[11px] text-slate-500"
                       >
                         {formatDateTime(
                           row.latest_violation_at,
@@ -1271,10 +1041,7 @@ export default function ContentViolationsTable({
                       {/* ACCOUNT */}
 
                       <td
-                        className="
-                          px-4
-                          py-3.5
-                        "
+                        className="px-4 py-3.5"
                       >
                         <AccountStatusBadge
                           status={
@@ -1286,10 +1053,7 @@ export default function ContentViolationsTable({
                       {/* ENFORCEMENT */}
 
                       <td
-                        className="
-                          px-4
-                          py-3.5
-                        "
+                        className="px-4 py-3.5"
                       >
                         <EnforcementBadge
                           row={
@@ -1301,11 +1065,7 @@ export default function ContentViolationsTable({
                       {/* ACTION */}
 
                       <td
-                        className="
-                          px-5
-                          py-3.5
-                          text-right
-                        "
+                        className="px-5 py-3.5 text-right"
                       >
                         <button
                           type="button"
@@ -1314,22 +1074,7 @@ export default function ContentViolationsTable({
                               row.user_id,
                             )
                           }
-                          className="
-                            inline-flex
-                            h-8
-                            items-center
-                            gap-1.5
-                            border
-                            border-slate-200
-                            px-2.5
-                            text-[11px]
-                            font-medium
-                            text-slate-600
-                            transition
-                            hover:border-slate-300
-                            hover:bg-slate-50
-                            hover:text-slate-900
-                          "
+                          className="inline-flex h-8 items-center gap-1.5 border border-slate-200 px-2.5 text-[11px] font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 rounded-lg"
                         >
                           <Eye
                             size={13}
@@ -1343,29 +1088,14 @@ export default function ContentViolationsTable({
                 )}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         ) : (
           <div
-            className="
-              flex
-              min-h-[250px]
-              flex-col
-              items-center
-              justify-center
-              px-6
-              text-center
-            "
+            className="flex min-h-[250px] flex-col items-center justify-center px-6 text-center"
           >
             <div
-              className="
-                flex
-                h-11
-                w-11
-                items-center
-                justify-center
-                bg-slate-100
-                text-slate-400
-              "
+              className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-400"
             >
               <ShieldAlert
                 size={18}
@@ -1373,24 +1103,14 @@ export default function ContentViolationsTable({
             </div>
 
             <p
-              className="
-                mt-4
-                text-sm
-                font-semibold
-                text-slate-700
-              "
+              className="mt-4 text-sm font-semibold text-slate-700"
             >
               No content
               violations found
             </p>
 
             <p
-              className="
-                mt-1
-                max-w-[420px]
-                text-xs
-                text-slate-400
-              "
+              className="mt-1 max-w-[420px] text-xs text-slate-400"
             >
               {rows.length ===
               0
@@ -1405,22 +1125,10 @@ export default function ContentViolationsTable({
         ========================== */}
 
         <div
-          className="
-            flex
-            items-center
-            justify-between
-            gap-4
-            border-t
-            border-slate-200
-            px-5
-            py-3
-          "
+          className="flex items-center justify-between gap-4 border-t border-slate-200 px-5 py-3"
         >
           <p
-            className="
-              text-[10px]
-              text-slate-400
-            "
+            className="text-[11px] text-slate-400"
           >
             Showing{" "}
             {
@@ -1434,17 +1142,11 @@ export default function ContentViolationsTable({
           </p>
 
           <p
-            className="
-              text-[10px]
-              text-slate-400
-            "
+            className="text-[11px] text-slate-400"
           >
             Active window:{" "}
             <span
-              className="
-                font-semibold
-                text-slate-600
-              "
+              className="font-semibold text-slate-600"
             >
               {
                 activeWindowDays
@@ -1463,67 +1165,34 @@ export default function ContentViolationsTable({
         <>
           <button
             type="button"
-            aria-label="Close violation details"
+            aria-label="Close violation history"
             onClick={() =>
               setSelectedUserId(
                 null,
               )
             }
-            className="
-              fixed
-              inset-0
-              z-40
-              bg-slate-950/20
-              backdrop-blur-[1px]
-            "
+            className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-[3px]"
           />
 
           <aside
-            className="
-              fixed
-              bottom-0
-              right-0
-              top-0
-              z-50
-              flex
-              w-full
-              max-w-[520px]
-              flex-col
-              border-l
-              border-slate-200
-              bg-white
-              shadow-2xl
-              shadow-slate-950/10
-            "
+            ref={violationDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="violation-detail-heading"
+            tabIndex={-1}
+            className="fixed left-1/2 top-1/2 z-50 flex max-h-[94vh] w-[calc(100%-24px)] max-w-4xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-2xl outline-none sm:max-h-[90vh] sm:w-[calc(100%-48px)]"
           >
             {/* DRAWER HEADER */}
 
             <div
-              className="
-                flex
-                h-[68px]
-                shrink-0
-                items-center
-                justify-between
-                border-b
-                border-slate-200
-                px-5
-              "
+              className="flex min-h-[74px] shrink-0 items-center justify-between border-b border-slate-100 bg-white px-5 sm:px-7"
             >
               <div>
                 <div
-                  className="
-                    flex
-                    items-center
-                    gap-2
-                  "
+                  className="flex items-center gap-2"
                 >
                   <p
-                    className="
-                      text-sm
-                      font-semibold
-                      text-slate-950
-                    "
+                    id="violation-detail-heading" className="text-base font-bold tracking-tight text-slate-950"
                   >
                     Content
                     Violation
@@ -1532,18 +1201,7 @@ export default function ContentViolationsTable({
 
                   {selectedRow.review_required && (
                     <span
-                      className="
-                        border
-                        border-red-200
-                        bg-red-50
-                        px-2
-                        py-1
-                        text-[9px]
-                        font-semibold
-                        uppercase
-                        tracking-wide
-                        text-red-700
-                      "
+                      className="border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-red-700 rounded-full"
                     >
                       Review Required
                     </span>
@@ -1551,11 +1209,7 @@ export default function ContentViolationsTable({
                 </div>
 
                 <p
-                  className="
-                    mt-1
-                    text-[10px]
-                    text-slate-400
-                  "
+                  className="mt-1 text-[11px] text-slate-400"
                 >
                   Automated
                   moderation
@@ -1570,19 +1224,7 @@ export default function ContentViolationsTable({
                     null,
                   )
                 }
-                className="
-                  flex
-                  h-8
-                  w-8
-                  items-center
-                  justify-center
-                  border
-                  border-slate-200
-                  text-slate-400
-                  transition
-                  hover:bg-slate-50
-                  hover:text-slate-700
-                "
+                className="flex h-8 w-8 items-center justify-center border border-slate-200 text-slate-400 transition hover:bg-slate-50 hover:text-slate-700"
               >
                 <X
                   size={15}
@@ -1593,61 +1235,27 @@ export default function ContentViolationsTable({
             {/* DRAWER BODY */}
 
             <div
-              className="
-                flex-1
-                overflow-y-auto
-              "
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
             >
               {/* USER */}
 
               <div
-                className="
-                  border-b
-                  border-slate-100
-                  px-5
-                  py-5
-                "
+                className="border-b border-slate-100 px-5 py-5 sm:px-7"
               >
                 <p
-                  className="
-                    text-[10px]
-                    font-bold
-                    uppercase
-                    tracking-[0.12em]
-                    text-slate-400
-                  "
+                  className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400"
                 >
                   User
                 </p>
 
                 <div
-                  className="
-                    mt-4
-                    flex
-                    items-start
-                    justify-between
-                    gap-4
-                  "
+                  className="mt-4 flex items-start justify-between gap-4"
                 >
                   <div
-                    className="
-                      flex
-                      min-w-0
-                      items-center
-                      gap-3
-                    "
+                    className="flex min-w-0 items-center gap-3"
                   >
                     <div
-                      className="
-                        flex
-                        h-10
-                        w-10
-                        shrink-0
-                        items-center
-                        justify-center
-                        bg-[#A92F56]/[0.08]
-                        text-[#A92F56]
-                      "
+                      className="flex h-10 w-10 shrink-0 items-center justify-center bg-[#A92F56]/[0.08] text-[#A92F56]"
                     >
                       <User
                         size={16}
@@ -1655,17 +1263,10 @@ export default function ContentViolationsTable({
                     </div>
 
                     <div
-                      className="
-                        min-w-0
-                      "
+                      className="min-w-0"
                     >
                       <p
-                        className="
-                          truncate
-                          text-sm
-                          font-semibold
-                          text-slate-900
-                        "
+                        className="truncate text-sm font-semibold text-slate-900"
                       >
                         {personName(
                           selectedRow,
@@ -1673,12 +1274,7 @@ export default function ContentViolationsTable({
                       </p>
 
                       <p
-                        className="
-                          mt-0.5
-                          truncate
-                          text-[10px]
-                          text-slate-400
-                        "
+                        className="mt-0.5 truncate text-[11px] text-slate-400"
                       >
                         {selectedRow.profile
                           .username
@@ -1696,34 +1292,13 @@ export default function ContentViolationsTable({
                 </div>
 
                 <div
-                  className="
-                    mt-4
-                    grid
-                    gap-2
-                    sm:grid-cols-2
-                  "
+                  className="mt-4 grid gap-2 sm:grid-cols-2"
                 >
                   <Link
                     href={`/admin/users?q=${encodeURIComponent(
                       selectedRow.user_id,
                     )}`}
-                    className="
-                      inline-flex
-                      h-9
-                      items-center
-                      justify-center
-                      gap-2
-                      border
-                      border-slate-200
-                      bg-white
-                      px-3
-                      text-[10px]
-                      font-semibold
-                      text-slate-600
-                      transition
-                      hover:bg-slate-50
-                      hover:text-slate-900
-                    "
+                    className="inline-flex h-9 items-center justify-center gap-2 border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
                   >
                     <User
                       size={13}
@@ -1736,22 +1311,7 @@ export default function ContentViolationsTable({
                     0 && (
                     <Link
                       href="/admin/reports?status=pending"
-                      className="
-                        inline-flex
-                        h-9
-                        items-center
-                        justify-center
-                        gap-2
-                        border
-                        border-[#FDC1C9]
-                        bg-[#FDC1C9]/15
-                        px-3
-                        text-[10px]
-                        font-semibold
-                        text-[#A92F56]
-                        transition
-                        hover:bg-[#FDC1C9]/25
-                      "
+                      className="inline-flex h-9 items-center justify-center gap-2 border border-[#FDC1C9] bg-[#FDC1C9]/15 px-3 text-[11px] font-semibold text-[#A92F56] transition hover:bg-[#FDC1C9]/25"
                     >
                       <ShieldAlert
                         size={13}
@@ -1766,33 +1326,17 @@ export default function ContentViolationsTable({
               {/* MODERATION SUMMARY */}
 
               <div
-                className="
-                  border-b
-                  border-slate-100
-                  px-5
-                  py-5
-                "
+                className="border-b border-slate-100 px-5 py-5 sm:px-7"
               >
                 <p
-                  className="
-                    text-[10px]
-                    font-bold
-                    uppercase
-                    tracking-[0.12em]
-                    text-slate-400
-                  "
+                  className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400"
                 >
                   Moderation
                   Summary
                 </p>
 
                 <div
-                  className="
-                    mt-4
-                    grid
-                    grid-cols-2
-                    gap-3
-                  "
+                  className="mt-4 grid grid-cols-2 gap-3"
                 >
                   <SummaryItem
                     label="Active strikes"
@@ -1824,30 +1368,17 @@ export default function ContentViolationsTable({
                 </div>
 
                 <div
-                  className="
-                    mt-3
-                    border
-                    border-slate-200
-                    p-3
-                  "
+                  className="mt-3 border border-slate-200 p-3 rounded-xl"
                 >
                   <p
-                    className="
-                      text-[9px]
-                      font-semibold
-                      uppercase
-                      tracking-wide
-                      text-slate-400
-                    "
+                    className="text-[11px] font-semibold uppercase tracking-wide text-slate-400"
                   >
                     Current
                     enforcement
                   </p>
 
                   <div
-                    className="
-                      mt-2
-                    "
+                    className="mt-2"
                   >
                     <EnforcementBadge
                       row={
@@ -1858,27 +1389,17 @@ export default function ContentViolationsTable({
                 </div>
 
                 <div
-                  className="
-                    mt-3
-                  "
+                  className="mt-3"
                 >
                   <p
-                    className="
-                      text-[10px]
-                      text-slate-400
-                    "
+                    className="text-[11px] text-slate-400"
                   >
                     Detected
                     categories
                   </p>
 
                   <div
-                    className="
-                      mt-2
-                      flex
-                      flex-wrap
-                      gap-1.5
-                    "
+                    className="mt-2 flex flex-wrap gap-1.5"
                   >
                     {selectedRow.categories
                       .length >
@@ -1891,16 +1412,7 @@ export default function ContentViolationsTable({
                             key={
                               category
                             }
-                            className="
-                              border
-                              border-slate-200
-                              bg-slate-50
-                              px-2
-                              py-1
-                              text-[9px]
-                              font-medium
-                              text-slate-600
-                            "
+                            className="border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-600 rounded-full"
                           >
                             {formatLabel(
                               category,
@@ -1910,10 +1422,7 @@ export default function ContentViolationsTable({
                       )
                     ) : (
                       <span
-                        className="
-                          text-[10px]
-                          text-slate-400
-                        "
+                        className="text-[11px] text-slate-400"
                       >
                         No category
                         metadata
@@ -1927,35 +1436,18 @@ export default function ContentViolationsTable({
 
               {selectedRow.active_ban && (
                 <div
-                  className="
-                    border-b
-                    border-slate-100
-                    px-5
-                    py-5
-                  "
+                  className="border-b border-slate-100 px-5 py-5 sm:px-7"
                 >
                   <div
-                    className="
-                      flex
-                      items-center
-                      gap-2
-                    "
+                    className="flex items-center gap-2"
                   >
                     <Ban
                       size={14}
-                      className="
-                        text-red-600
-                      "
+                      className="text-red-600"
                     />
 
                     <p
-                      className="
-                        text-[10px]
-                        font-bold
-                        uppercase
-                        tracking-[0.12em]
-                        text-slate-400
-                      "
+                      className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400"
                     >
                       Active
                       Restriction
@@ -1963,20 +1455,10 @@ export default function ContentViolationsTable({
                   </div>
 
                   <div
-                    className="
-                      mt-4
-                      border
-                      border-red-200
-                      bg-red-50/50
-                      p-4
-                    "
+                    className="mt-4 border border-red-200 bg-red-50/50 p-4"
                   >
                     <div
-                      className="
-                        grid
-                        gap-4
-                        sm:grid-cols-2
-                      "
+                      className="grid gap-4 sm:grid-cols-2"
                     >
                       <SummaryItem
                         label="Ban type"
@@ -2017,29 +1499,16 @@ export default function ContentViolationsTable({
                     </div>
 
                     <div
-                      className="
-                        mt-4
-                      "
+                      className="mt-4"
                     >
                       <p
-                        className="
-                          text-[9px]
-                          font-semibold
-                          uppercase
-                          tracking-wide
-                          text-red-500
-                        "
+                        className="text-[11px] font-semibold uppercase tracking-wide text-red-500"
                       >
                         Reason
                       </p>
 
                       <p
-                        className="
-                          mt-1
-                          text-xs
-                          leading-5
-                          text-red-800
-                        "
+                        className="mt-1 text-xs leading-5 text-red-800"
                       >
                         {
                           selectedRow.active_ban
@@ -2054,39 +1523,21 @@ export default function ContentViolationsTable({
               {/* VIOLATION TIMELINE */}
 
               <div
-                className="
-                  px-5
-                  py-5
-                "
+                className="px-5 py-5 sm:px-7"
               >
                 <div
-                  className="
-                    flex
-                    items-center
-                    justify-between
-                    gap-4
-                  "
+                  className="flex items-center justify-between gap-4"
                 >
                   <div>
                     <p
-                      className="
-                        text-[10px]
-                        font-bold
-                        uppercase
-                        tracking-[0.12em]
-                        text-slate-400
-                      "
+                      className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400"
                     >
                       Violation
                       History
                     </p>
 
                     <p
-                      className="
-                        mt-1
-                        text-[10px]
-                        text-slate-400
-                      "
+                      className="mt-1 text-[11px] text-slate-400"
                     >
                       Most recent
                       incidents within
@@ -2097,11 +1548,7 @@ export default function ContentViolationsTable({
                   </div>
 
                   <span
-                    className="
-                      text-[10px]
-                      font-semibold
-                      text-slate-500
-                    "
+                    className="text-[11px] font-semibold text-slate-500"
                   >
                     {
                       selectedRow.history
@@ -2112,10 +1559,7 @@ export default function ContentViolationsTable({
                 </div>
 
                 <div
-                  className="
-                    mt-4
-                    space-y-3
-                  "
+                  className="mt-4 space-y-3"
                 >
                   {selectedRow.history.map(
                     (
@@ -2126,44 +1570,19 @@ export default function ContentViolationsTable({
                         key={
                           violation.id
                         }
-                        className="
-                          border
-                          border-slate-200
-                          p-4
-                        "
+                        className="border border-slate-200 p-4"
                       >
                         <div
-                          className="
-                            flex
-                            items-start
-                            justify-between
-                            gap-4
-                          "
+                          className="flex items-start justify-between gap-4"
                         >
                           <div
-                            className="
-                              flex
-                              items-start
-                              gap-3
-                            "
+                            className="flex items-start gap-3"
                           >
                             <div
-                              className="
-                                flex
-                                h-8
-                                w-8
-                                shrink-0
-                                items-center
-                                justify-center
-                                bg-slate-100
-                                text-slate-500
-                              "
+                              className="flex h-8 w-8 shrink-0 items-center justify-center bg-slate-100 text-slate-500"
                             >
                               <span
-                                className="
-                                  text-[10px]
-                                  font-semibold
-                                "
+                                className="text-[11px] font-semibold"
                               >
                                 #
                                 {
@@ -2181,14 +1600,7 @@ export default function ContentViolationsTable({
                               />
 
                               <div
-                                className="
-                                  mt-2
-                                  flex
-                                  items-center
-                                  gap-1.5
-                                  text-[10px]
-                                  text-slate-400
-                                "
+                                className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-400"
                               >
                                 <Clock3
                                   size={11}
@@ -2202,10 +1614,7 @@ export default function ContentViolationsTable({
                           </div>
 
                           <span
-                            className="
-                              text-[9px]
-                              text-slate-300
-                            "
+                            className="text-[11px] text-slate-300"
                           >
                             Log #
                             {
@@ -2218,12 +1627,7 @@ export default function ContentViolationsTable({
                           .length >
                           0 && (
                           <div
-                            className="
-                              mt-3
-                              flex
-                              flex-wrap
-                              gap-1.5
-                            "
+                            className="mt-3 flex flex-wrap gap-1.5"
                           >
                             {violation.categories.map(
                               (
@@ -2231,15 +1635,7 @@ export default function ContentViolationsTable({
                               ) => (
                                 <span
                                   key={`${violation.id}-${category}`}
-                                  className="
-                                    border
-                                    border-slate-200
-                                    bg-slate-50
-                                    px-2
-                                    py-1
-                                    text-[9px]
-                                    text-slate-600
-                                  "
+                                  className="border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-600 rounded-full"
                                 >
                                   {formatLabel(
                                     category,
@@ -2254,18 +1650,11 @@ export default function ContentViolationsTable({
                           .length >
                           0 && (
                           <p
-                            className="
-                              mt-3
-                              text-[10px]
-                              text-slate-400
-                            "
+                            className="mt-3 text-[11px] text-slate-400"
                           >
                             Detected in:{" "}
                             <span
-                              className="
-                                font-medium
-                                text-slate-600
-                              "
+                              className="font-medium text-slate-600"
                             >
                               {violation.fields
                                 .map(
@@ -2286,15 +1675,7 @@ export default function ContentViolationsTable({
                   .length ===
                   0 && (
                   <div
-                    className="
-                      mt-4
-                      border
-                      border-slate-200
-                      bg-slate-50
-                      p-4
-                      text-xs
-                      text-slate-500
-                    "
+                    className="mt-4 border border-slate-200 bg-slate-50 p-4 text-xs text-slate-500"
                   >
                     No violation
                     history is
@@ -2327,32 +1708,16 @@ function SummaryItem({
 }) {
   return (
     <div
-      className="
-        border
-        border-slate-200
-        p-3
-      "
+      className="border border-slate-200 p-3 rounded-xl"
     >
       <p
-        className="
-          text-[9px]
-          font-semibold
-          uppercase
-          tracking-wide
-          text-slate-400
-        "
+        className="text-[11px] font-semibold uppercase tracking-wide text-slate-400"
       >
         {label}
       </p>
 
       <p
-        className="
-          mt-1.5
-          truncate
-          text-xs
-          font-semibold
-          text-slate-800
-        "
+        className="mt-1.5 truncate text-xs font-semibold text-slate-800"
       >
         {value}
       </p>

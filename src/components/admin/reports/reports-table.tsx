@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   useTransition,
 } from "react";
@@ -350,21 +351,7 @@ function ReporterSourceBadge({
   ) {
     return (
       <span
-        className="
-          inline-flex
-          items-center
-          gap-1
-          border
-          border-[#FDC1C9]
-          bg-[#FDC1C9]/15
-          px-1.5
-          py-0.5
-          text-[8px]
-          font-bold
-          uppercase
-          tracking-[0.07em]
-          text-[#A92F56]
-        "
+        className="inline-flex items-center gap-1 rounded-full border border-[#FDC1C9] bg-[#FDC1C9]/15 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-[0.07em] text-[#A92F56] rounded-full"
       >
         <UserCog
           size={9}
@@ -381,21 +368,7 @@ function ReporterSourceBadge({
   ) {
     return (
       <span
-        className="
-          inline-flex
-          items-center
-          gap-1
-          border
-          border-violet-200
-          bg-violet-50
-          px-1.5
-          py-0.5
-          text-[8px]
-          font-bold
-          uppercase
-          tracking-[0.07em]
-          text-violet-700
-        "
+        className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-[0.07em] text-violet-700 rounded-full"
       >
         <Bot
           size={9}
@@ -494,7 +467,7 @@ function StatusBadge({
         border
         px-2
         py-1
-        text-[10px]
+        text-[11px]
         font-semibold
         uppercase
         tracking-[0.05em]
@@ -600,6 +573,8 @@ export default function ReportsTable({
 }: ReportsTableProps) {
   const router =
     useRouter();
+  const reportDialogRef = useRef<HTMLElement | null>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
 
   const searchParams =
     useSearchParams();
@@ -781,8 +756,18 @@ export default function ReportsTable({
     router,
   ]);
 
+  useEffect(() => {
+    if (!selectedReportId) return;
+    restoreFocusRef.current = document.activeElement as HTMLElement | null;
+    const frame = window.requestAnimationFrame(() => reportDialogRef.current?.focus());
+    return () => {
+      window.cancelAnimationFrame(frame);
+      restoreFocusRef.current?.focus();
+    };
+  }, [selectedReportId]);
+
   /* =======================================================
-     DRAWER BODY LOCK
+     MODAL BODY LOCK
   ======================================================= */
 
   useEffect(() => {
@@ -812,6 +797,17 @@ export default function ReportsTable({
         return;
       }
 
+      if (event.key === "Tab" && reportDialogRef.current) {
+        const elements = Array.from(reportDialogRef.current.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
+        )).filter((element) => element.getClientRects().length > 0 && element.getAttribute("aria-hidden") !== "true");
+        if (elements.length > 0) {
+          const first = elements[0];
+          const last = elements[elements.length - 1];
+          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+          else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+        }
+      }
       if (
         event.key ===
         "Escape"
@@ -1309,45 +1305,28 @@ export default function ReportsTable({
           REPORTS TABLE
       =================================================== */}
 
-      <section
-        className="
-          border
-          border-slate-200
-          bg-white
-        "
-      >
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-950/[0.03]">
+        <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-5 sm:px-7 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#A92F56]/10 text-[#A92F56]"><Flag size={18} /></span>
+            <div>
+              <h2 className="text-sm font-bold tracking-tight text-slate-900">Submitted Reports</h2>
+              <p className="mt-1 text-[11px] text-slate-500">Review, resolve, dismiss or escalate moderation cases.</p>
+            </div>
+          </div>
+          <span className="inline-flex w-fit items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-600">{showingText}</span>
+        </div>
         {/* Toolbar */}
 
         <div
-          className="
-            flex
-            flex-col
-            gap-3
-            border-b
-            border-slate-200
-            p-4
-            xl:flex-row
-            xl:items-center
-            xl:justify-between
-          "
+          className="flex flex-col gap-3 border-b border-slate-100 bg-slate-50/40 p-4 xl:flex-row xl:items-center xl:justify-between sm:px-5"
         >
           <div
-            className="
-              relative
-              w-full
-              xl:max-w-[360px]
-            "
+            className="relative w-full xl:max-w-[360px]"
           >
             <Search
               size={15}
-              className="
-                pointer-events-none
-                absolute
-                left-3
-                top-1/2
-                -translate-y-1/2
-                text-slate-400
-              "
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
             />
 
             <input
@@ -1363,25 +1342,9 @@ export default function ReportsTable({
                     .value,
                 )
               }
+              aria-label="Search reports"
               placeholder="Search report ID, reason or details..."
-              className="
-                h-10
-                w-full
-                border
-                border-slate-200
-                bg-white
-                pl-9
-                pr-9
-                text-xs
-                text-slate-800
-                outline-none
-                transition
-                placeholder:text-slate-400
-                hover:border-slate-300
-                focus:border-[#CC3A67]
-                focus:ring-2
-                focus:ring-[#FDC1C9]/30
-              "
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-9 text-xs text-slate-800 outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-[#CC3A67] focus:ring-2 focus:ring-[#FDC1C9]/30 focus-visible:ring-2 focus-visible:ring-[#A92F56]/20"
             />
 
             {query && (
@@ -1392,19 +1355,7 @@ export default function ReportsTable({
                     "",
                   )
                 }
-                className="
-                  absolute
-                  right-2
-                  top-1/2
-                  flex
-                  h-7
-                  w-7
-                  -translate-y-1/2
-                  items-center
-                  justify-center
-                  text-slate-400
-                  hover:text-slate-700
-                "
+                className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center text-slate-400 hover:text-slate-700"
                 aria-label="Clear search"
               >
                 <X
@@ -1415,14 +1366,10 @@ export default function ReportsTable({
           </div>
 
           <div
-            className="
-              flex
-              flex-wrap
-              items-center
-              gap-2
-            "
+            className="flex flex-wrap items-center gap-2"
           >
             <select
+              aria-label="Filter reports by status"
               value={
                 initialStatus
               }
@@ -1437,19 +1384,7 @@ export default function ReportsTable({
                   "all",
                 )
               }
-              className="
-                h-10
-                border
-                border-slate-200
-                bg-white
-                px-3
-                text-xs
-                font-medium
-                text-slate-600
-                outline-none
-                hover:border-slate-300
-                focus:border-[#CC3A67]
-              "
+              className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 outline-none hover:border-slate-300 focus:border-[#CC3A67] rounded-xl focus-visible:ring-2 focus-visible:ring-[#A92F56]/20"
             >
               <option value="all">
                 All statuses
@@ -1481,6 +1416,7 @@ export default function ReportsTable({
             </select>
 
             <select
+              aria-label="Filter reports by type"
               value={
                 initialType
               }
@@ -1495,19 +1431,7 @@ export default function ReportsTable({
                   "all",
                 )
               }
-              className="
-                h-10
-                border
-                border-slate-200
-                bg-white
-                px-3
-                text-xs
-                font-medium
-                text-slate-600
-                outline-none
-                hover:border-slate-300
-                focus:border-[#CC3A67]
-              "
+              className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 outline-none hover:border-slate-300 focus:border-[#CC3A67] rounded-xl focus-visible:ring-2 focus-visible:ring-[#A92F56]/20"
             >
               <option value="all">
                 All types
@@ -1547,24 +1471,7 @@ export default function ReportsTable({
                 reports.length ===
                 0
               }
-              className="
-                inline-flex
-                h-10
-                items-center
-                gap-2
-                border
-                border-slate-200
-                bg-white
-                px-3
-                text-xs
-                font-medium
-                text-slate-600
-                transition
-                hover:border-slate-300
-                hover:bg-slate-50
-                disabled:cursor-not-allowed
-                disabled:opacity-40
-              "
+              className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 rounded-xl"
             >
               <Download
                 size={14}
@@ -1579,37 +1486,18 @@ export default function ReportsTable({
 
         {initialPin && (
           <div
-            className="
-              flex
-              items-center
-              justify-between
-              gap-4
-              border-b
-              border-[#FDC1C9]
-              bg-[#FDC1C9]/15
-              px-4
-              py-2.5
-            "
+            className="flex items-center justify-between gap-4 border-b border-[#FDC1C9] bg-[#FDC1C9]/15 px-4 py-2.5"
           >
             <div
-              className="
-                flex
-                items-center
-                gap-2
-              "
+              className="flex items-center gap-2"
             >
               <MapPin
                 size={14}
-                className="
-                  text-[#A92F56]
-                "
+                className="text-[#A92F56]"
               />
 
               <p
-                className="
-                  text-xs
-                  text-slate-600
-                "
+                className="text-xs text-slate-600"
               >
                 Showing reports
                 associated with Pin #
@@ -1622,12 +1510,7 @@ export default function ReportsTable({
               onClick={
                 clearPinFilter
               }
-              className="
-                text-[10px]
-                font-semibold
-                text-[#A92F56]
-                hover:text-[#72213A]
-              "
+              className="text-[11px] font-semibold text-[#A92F56] hover:text-[#72213A]"
             >
               Clear filter
             </button>
@@ -1638,26 +1521,33 @@ export default function ReportsTable({
 
         {reports.length >
         0 ? (
-          <div
-            className="
-              overflow-x-auto
-            "
-          >
+          <>
+            <div className="grid gap-3 p-3 md:hidden sm:p-4">
+              {reports.map((report) => (
+                <article key={report.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-slate-900">Report #{report.id}</p>
+                      <p className="mt-1 text-[11px] text-slate-500">{formatLabel(report.type)} · {formatDate(report.created_at)}</p>
+                    </div>
+                    <StatusBadge status={report.status} />
+                  </div>
+                  <p className="mt-3 line-clamp-2 text-xs font-medium leading-5 text-slate-700">{report.reason}</p>
+                  <p className="mt-2 truncate text-[11px] text-slate-500">Target: {reportTargetLabel(report)}</p>
+                  <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
+                    <span className="min-w-0 truncate text-[11px] text-slate-500">By {reporterName(report)}</span>
+                    <button type="button" onClick={() => { setSelectedReportId(report.id); setActionMessage(null); setBanMessage(null); }} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[#A92F56]/20 bg-[#A92F56]/[0.06] px-3 py-2 text-xs font-bold text-[#A92F56]"><Eye size={13} />Review</button>
+                  </div>
+                </article>
+              ))}
+            </div>
+            <div className="hidden overflow-x-auto md:block">
             <table
-              className="
-                w-full
-                min-w-[1180px]
-                border-collapse
-                text-left
-              "
+              className="w-full min-w-[1180px] border-collapse text-left"
             >
               <thead>
                 <tr
-                  className="
-                    border-b
-                    border-slate-100
-                    bg-slate-50/70
-                  "
+                  className="border-b border-slate-100 bg-slate-50/80"
                 >
                   {[
                     "Report",
@@ -1678,17 +1568,7 @@ export default function ReportsTable({
                           heading ||
                           "action"
                         }
-                        className="
-                          px-4
-                          py-3
-                          text-[10px]
-                          font-semibold
-                          uppercase
-                          tracking-[0.08em]
-                          text-slate-400
-                          first:pl-5
-                          last:pr-5
-                        "
+                        className="px-4 py-3.5 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500 first:pl-5 last:pr-5"
                       >
                         {heading}
                       </th>
@@ -1712,40 +1592,18 @@ export default function ReportsTable({
                         key={
                           report.id
                         }
-                        className="
-                          border-b
-                          border-slate-100
-                          transition-colors
-                          last:border-b-0
-                          hover:bg-slate-50/60
-                        "
+                        className="border-b border-slate-100 transition-colors last:border-b-0 hover:bg-[#FDF5F7]/55"
                       >
                         {/* Report */}
 
                         <td
-                          className="
-                            px-5
-                            py-3.5
-                          "
+                          className="px-5 py-3.5"
                         >
                           <div
-                            className="
-                              flex
-                              items-center
-                              gap-3
-                            "
+                            className="flex items-center gap-3"
                           >
                             <div
-                              className="
-                                flex
-                                h-9
-                                w-9
-                                shrink-0
-                                items-center
-                                justify-center
-                                bg-[#A92F56]/[0.08]
-                                text-[#A92F56]
-                              "
+                              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#A92F56]/[0.08] text-[#A92F56]"
                             >
                               <Flag
                                 size={15}
@@ -1754,23 +1612,14 @@ export default function ReportsTable({
 
                             <div>
                               <p
-                                className="
-                                  text-xs
-                                  font-semibold
-                                  text-slate-900
-                                "
+                                className="text-xs font-semibold text-slate-900"
                               >
                                 Report #
                                 {report.id}
                               </p>
 
                               <p
-                                className="
-                                  mt-0.5
-                                  text-[10px]
-                                  capitalize
-                                  text-slate-400
-                                "
+                                className="mt-0.5 text-[11px] capitalize text-slate-400"
                               >
                                 {
                                   report.target
@@ -1784,12 +1633,7 @@ export default function ReportsTable({
                         {/* Type */}
 
                         <td
-                          className="
-                            px-4
-                            py-3.5
-                            text-xs
-                            text-slate-600
-                          "
+                          className="px-4 py-3.5 text-xs text-slate-600"
                         >
                           {formatLabel(
                             report.type,
@@ -1799,18 +1643,10 @@ export default function ReportsTable({
                         {/* Target */}
 
                         <td
-                          className="
-                            px-4
-                            py-3.5
-                          "
+                          className="px-4 py-3.5"
                         >
                           <div
-                            className="
-                              flex
-                              max-w-[180px]
-                              items-center
-                              gap-2
-                            "
+                            className="flex max-w-[180px] items-center gap-2"
                           >
                             <TargetIcon
                               type={
@@ -1820,11 +1656,7 @@ export default function ReportsTable({
                             />
 
                             <span
-                              className="
-                                truncate
-                                text-xs
-                                text-slate-600
-                              "
+                              className="truncate text-xs text-slate-600"
                             >
                               {reportTargetLabel(
                                 report,
@@ -1836,30 +1668,16 @@ export default function ReportsTable({
                         {/* Reported By */}
 
                         <td
-                          className="
-                            px-4
-                            py-3.5
-                          "
+                          className="px-4 py-3.5"
                         >
                           <div
-                            className="
-                              max-w-[180px]
-                            "
+                            className="max-w-[180px]"
                           >
                             <div
-                              className="
-                                flex
-                                items-center
-                                gap-1.5
-                              "
+                              className="flex items-center gap-1.5"
                             >
                               <p
-                                className="
-                                  truncate
-                                  text-xs
-                                  font-medium
-                                  text-slate-700
-                                "
+                                className="truncate text-xs font-medium text-slate-700"
                               >
                                 {reporterName(
                                   report,
@@ -1875,12 +1693,7 @@ export default function ReportsTable({
 
                             {secondary && (
                               <p
-                                className="
-                                  mt-0.5
-                                  truncate
-                                  text-[9px]
-                                  text-slate-400
-                                "
+                                className="mt-0.5 truncate text-[11px] text-slate-400"
                               >
                                 {secondary}
                               </p>
@@ -1891,18 +1704,10 @@ export default function ReportsTable({
                         {/* Reason */}
 
                         <td
-                          className="
-                            px-4
-                            py-3.5
-                          "
+                          className="px-4 py-3.5"
                         >
                           <p
-                            className="
-                              max-w-[210px]
-                              truncate
-                              text-xs
-                              text-slate-600
-                            "
+                            className="max-w-[210px] truncate text-xs text-slate-600"
                           >
                             {report.reason}
                           </p>
@@ -1911,12 +1716,7 @@ export default function ReportsTable({
                         {/* Assigned */}
 
                         <td
-                          className="
-                            px-4
-                            py-3.5
-                            text-[11px]
-                            text-slate-500
-                          "
+                          className="px-4 py-3.5 text-[11px] text-slate-500"
                         >
                           {report.assigned_admin
                             ? report
@@ -1931,10 +1731,7 @@ export default function ReportsTable({
                         {/* Status */}
 
                         <td
-                          className="
-                            px-4
-                            py-3.5
-                          "
+                          className="px-4 py-3.5"
                         >
                           <StatusBadge
                             status={
@@ -1946,12 +1743,7 @@ export default function ReportsTable({
                         {/* Date */}
 
                         <td
-                          className="
-                            px-4
-                            py-3.5
-                            text-[11px]
-                            text-slate-500
-                          "
+                          className="px-4 py-3.5 text-[11px] text-slate-500"
                         >
                           {formatDate(
                             report.created_at,
@@ -1961,11 +1753,7 @@ export default function ReportsTable({
                         {/* Action */}
 
                         <td
-                          className="
-                            px-5
-                            py-3.5
-                            text-right
-                          "
+                          className="px-5 py-3.5 text-right"
                         >
                           <button
                             type="button"
@@ -1986,22 +1774,7 @@ export default function ReportsTable({
                                 null,
                               );
                             }}
-                            className="
-                              inline-flex
-                              h-8
-                              items-center
-                              gap-1.5
-                              border
-                              border-slate-200
-                              px-2.5
-                              text-[11px]
-                              font-medium
-                              text-slate-600
-                              transition
-                              hover:border-slate-300
-                              hover:bg-slate-50
-                              hover:text-slate-900
-                            "
+                            className="inline-flex h-8 items-center gap-1.5 border border-slate-200 px-2.5 text-[11px] font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 rounded-lg"
                           >
                             <Eye
                               size={13}
@@ -2016,29 +1789,14 @@ export default function ReportsTable({
                 )}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         ) : (
           <div
-            className="
-              flex
-              min-h-[320px]
-              flex-col
-              items-center
-              justify-center
-              px-6
-              text-center
-            "
+            className="flex min-h-[320px] flex-col items-center justify-center px-6 text-center"
           >
             <div
-              className="
-                flex
-                h-11
-                w-11
-                items-center
-                justify-center
-                bg-slate-100
-                text-slate-400
-              "
+              className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-400"
             >
               <Flag
                 size={18}
@@ -2046,22 +1804,13 @@ export default function ReportsTable({
             </div>
 
             <p
-              className="
-                mt-4
-                text-sm
-                font-semibold
-                text-slate-700
-              "
+              className="mt-4 text-sm font-semibold text-slate-700"
             >
               No reports found
             </p>
 
             <p
-              className="
-                mt-1
-                text-xs
-                text-slate-400
-              "
+              className="mt-1 text-xs text-slate-400"
             >
               Try changing the
               search or filters.
@@ -2072,32 +1821,16 @@ export default function ReportsTable({
         {/* Pagination */}
 
         <div
-          className="
-            flex
-            items-center
-            justify-between
-            border-t
-            border-slate-200
-            px-4
-            py-3
-            sm:px-5
-          "
+          className="flex items-center justify-between border-t border-slate-200 px-4 py-3 sm:px-5"
         >
           <p
-            className="
-              text-[11px]
-              text-slate-400
-            "
+            className="text-[11px] text-slate-400"
           >
             {showingText}
           </p>
 
           <div
-            className="
-              flex
-              items-center
-              gap-2
-            "
+            className="flex items-center gap-2"
           >
             {pagination.page >
             1 ? (
@@ -2106,41 +1839,20 @@ export default function ReportsTable({
                   pagination.page -
                     1,
                 )}
-                className="
-                  border
-                  border-slate-200
-                  px-3
-                  py-1.5
-                  text-[11px]
-                  font-medium
-                  text-slate-600
-                  hover:bg-slate-50
-                "
+                className="rounded-xl border border-slate-200 px-3.5 py-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
               >
                 Previous
               </Link>
             ) : (
               <span
-                className="
-                  border
-                  border-slate-100
-                  px-3
-                  py-1.5
-                  text-[11px]
-                  text-slate-300
-                "
+                className="rounded-xl border border-slate-100 px-3.5 py-2 text-[11px] text-slate-300"
               >
                 Previous
               </span>
             )}
 
             <span
-              className="
-                px-2
-                text-[11px]
-                font-medium
-                text-slate-500
-              "
+              className="px-2 text-[11px] font-medium text-slate-500"
             >
               {pagination.page}
               {" / "}
@@ -2154,29 +1866,13 @@ export default function ReportsTable({
                   pagination.page +
                     1,
                 )}
-                className="
-                  border
-                  border-slate-200
-                  px-3
-                  py-1.5
-                  text-[11px]
-                  font-medium
-                  text-slate-600
-                  hover:bg-slate-50
-                "
+                className="rounded-xl border border-slate-200 px-3.5 py-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
               >
                 Next
               </Link>
             ) : (
               <span
-                className="
-                  border
-                  border-slate-100
-                  px-3
-                  py-1.5
-                  text-[11px]
-                  text-slate-300
-                "
+                className="rounded-xl border border-slate-100 px-3.5 py-2 text-[11px] text-slate-300"
               >
                 Next
               </span>
@@ -2205,61 +1901,29 @@ export default function ReportsTable({
                 );
               }
             }}
-            className="
-              fixed
-              inset-0
-              z-40
-              bg-slate-950/20
-              backdrop-blur-[1px]
-            "
+            className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-[3px]"
           />
 
           <aside
-            className="
-              fixed
-              bottom-0
-              right-0
-              top-0
-              z-50
-              flex
-              w-full
-              max-w-[500px]
-              flex-col
-              border-l
-              border-slate-200
-              bg-white
-              shadow-2xl
-              shadow-slate-950/10
-            "
+            ref={reportDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="report-detail-heading"
+            aria-hidden={Boolean(pendingAction || banModalOpen)}
+            tabIndex={-1}
+            className="fixed left-1/2 top-1/2 z-50 flex max-h-[94vh] w-[calc(100%-24px)] max-w-4xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-2xl outline-none sm:max-h-[90vh] sm:w-[calc(100%-48px)]"
           >
             {/* Drawer header */}
 
             <div
-              className="
-                flex
-                h-[68px]
-                shrink-0
-                items-center
-                justify-between
-                border-b
-                border-slate-200
-                px-5
-              "
+              className="flex min-h-[74px] shrink-0 items-center justify-between border-b border-slate-100 bg-white px-5 sm:px-7"
             >
               <div>
                 <div
-                  className="
-                    flex
-                    items-center
-                    gap-2
-                  "
+                  className="flex items-center gap-2"
                 >
                   <p
-                    className="
-                      text-sm
-                      font-semibold
-                      text-slate-950
-                    "
+                    id="report-detail-heading" className="text-base font-bold tracking-tight text-slate-950"
                   >
                     Report #
                     {selectedReport.id}
@@ -2273,11 +1937,7 @@ export default function ReportsTable({
                 </div>
 
                 <p
-                  className="
-                    mt-1
-                    text-[10px]
-                    text-slate-400
-                  "
+                  className="mt-1 text-[11px] text-slate-400"
                 >
                   Moderation review
                 </p>
@@ -2297,22 +1957,8 @@ export default function ReportsTable({
                     null,
                   )
                 }
-                className="
-                  flex
-                  h-8
-                  w-8
-                  items-center
-                  justify-center
-                  border
-                  border-slate-200
-                  text-slate-400
-                  transition
-                  hover:bg-slate-50
-                  hover:text-slate-700
-                  disabled:cursor-not-allowed
-                  disabled:opacity-40
-                "
-                aria-label="Close report drawer"
+                className="flex h-8 w-8 items-center justify-center border border-slate-200 text-slate-400 transition hover:bg-slate-50 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label="Close report details"
               >
                 <X
                   size={15}
@@ -2321,58 +1967,31 @@ export default function ReportsTable({
             </div>
 
             <div
-              className="
-                flex-1
-                overflow-y-auto
-              "
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
             >
               {/* Report info */}
 
               <div
-                className="
-                  border-b
-                  border-slate-100
-                  px-5
-                  py-5
-                "
+                className="border-b border-slate-100 px-5 py-5 sm:px-7"
               >
                 <p
-                  className="
-                    text-[10px]
-                    font-bold
-                    uppercase
-                    tracking-[0.12em]
-                    text-slate-400
-                  "
+                  className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400"
                 >
                   Report
                 </p>
 
                 <div
-                  className="
-                    mt-4
-                    grid
-                    grid-cols-2
-                    gap-4
-                  "
+                  className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2"
                 >
                   <div>
                     <p
-                      className="
-                        text-[10px]
-                        text-slate-400
-                      "
+                      className="text-[11px] text-slate-400"
                     >
                       Type
                     </p>
 
                     <p
-                      className="
-                        mt-1
-                        text-xs
-                        font-medium
-                        text-slate-700
-                      "
+                      className="mt-1 text-xs font-medium text-slate-700"
                     >
                       {formatLabel(
                         selectedReport.type,
@@ -2382,21 +2001,13 @@ export default function ReportsTable({
 
                   <div>
                     <p
-                      className="
-                        text-[10px]
-                        text-slate-400
-                      "
+                      className="text-[11px] text-slate-400"
                     >
                       Submitted
                     </p>
 
                     <p
-                      className="
-                        mt-1
-                        text-xs
-                        font-medium
-                        text-slate-700
-                      "
+                      className="mt-1 text-xs font-medium text-slate-700"
                     >
                       {formatDateTime(
                         selectedReport.created_at,
@@ -2406,53 +2017,32 @@ export default function ReportsTable({
                 </div>
 
                 <div
-                  className="
-                    mt-5
-                  "
+                  className="mt-5"
                 >
                   <p
-                    className="
-                      text-[10px]
-                      text-slate-400
-                    "
+                    className="text-[11px] text-slate-400"
                   >
                     Reason
                   </p>
 
                   <p
-                    className="
-                      mt-1
-                      text-sm
-                      font-semibold
-                      text-slate-900
-                    "
+                    className="mt-1 text-sm font-semibold text-slate-900"
                   >
                     {selectedReport.reason}
                   </p>
                 </div>
 
                 <div
-                  className="
-                    mt-4
-                  "
+                  className="mt-4"
                 >
                   <p
-                    className="
-                      text-[10px]
-                      text-slate-400
-                    "
+                    className="text-[11px] text-slate-400"
                   >
                     Additional details
                   </p>
 
                   <p
-                    className="
-                      mt-1
-                      whitespace-pre-wrap
-                      text-xs
-                      leading-6
-                      text-slate-600
-                    "
+                    className="mt-1 whitespace-pre-wrap text-xs leading-6 text-slate-600"
                   >
                     {selectedReport.details ||
                       "No additional details were provided."}
@@ -2463,32 +2053,16 @@ export default function ReportsTable({
               {/* Reported content */}
 
               <div
-                className="
-                  border-b
-                  border-slate-100
-                  px-5
-                  py-5
-                "
+                className="border-b border-slate-100 px-5 py-5 sm:px-7"
               >
                 <p
-                  className="
-                    mb-4
-                    text-[10px]
-                    font-bold
-                    uppercase
-                    tracking-[0.12em]
-                    text-slate-400
-                  "
+                  className="mb-4 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400"
                 >
                   Reported content
                 </p>
 
                 <div
-                  className="
-                    border
-                    border-slate-200
-                    bg-slate-50/50
-                  "
+                  className="border border-slate-200 bg-slate-50/50"
                 >
                   {selectedReport
                     .target
@@ -2501,27 +2075,15 @@ export default function ReportsTable({
                           .photo_url
                       }
                       alt=""
-                      className="
-                        h-40
-                        w-full
-                        border-b
-                        border-slate-200
-                        object-cover
-                      "
+                      className="h-40 w-full border-b border-slate-200 object-cover"
                     />
                   )}
 
                   <div
-                    className="
-                      p-4
-                    "
+                    className="p-4"
                   >
                     <div
-                      className="
-                        flex
-                        items-center
-                        gap-2
-                      "
+                      className="flex items-center gap-2"
                     >
                       <TargetIcon
                         type={
@@ -2532,13 +2094,7 @@ export default function ReportsTable({
                       />
 
                       <span
-                        className="
-                          text-[10px]
-                          font-semibold
-                          uppercase
-                          tracking-wide
-                          text-slate-400
-                        "
+                        className="text-[11px] font-semibold uppercase tracking-wide text-slate-400"
                       >
                         {
                           selectedReport
@@ -2549,12 +2105,7 @@ export default function ReportsTable({
                     </div>
 
                     <p
-                      className="
-                        mt-3
-                        text-sm
-                        font-semibold
-                        text-slate-900
-                      "
+                      className="mt-3 text-sm font-semibold text-slate-900"
                     >
                       {reportTargetLabel(
                         selectedReport,
@@ -2565,13 +2116,7 @@ export default function ReportsTable({
                       .target
                       .content && (
                       <p
-                        className="
-                          mt-2
-                          whitespace-pre-wrap
-                          text-xs
-                          leading-5
-                          text-slate-600
-                        "
+                        className="mt-2 whitespace-pre-wrap text-xs leading-5 text-slate-600"
                       >
                         {
                           selectedReport
@@ -2589,14 +2134,7 @@ export default function ReportsTable({
                         .pin_id && (
                         <Link
                           href={`/admin/pins?q=${selectedReport.pin_id}`}
-                          className="
-                            mt-4
-                            inline-flex
-                            text-[10px]
-                            font-semibold
-                            text-[#A92F56]
-                            hover:text-[#72213A]
-                          "
+                          className="mt-4 inline-flex text-[11px] font-semibold text-[#A92F56] hover:text-[#72213A]"
                         >
                           View in Pins
                         </Link>
@@ -2610,58 +2148,27 @@ export default function ReportsTable({
               ================================================= */}
 
               <div
-                className="
-                  border-b
-                  border-slate-100
-                  px-5
-                  py-5
-                "
+                className="border-b border-slate-100 px-5 py-5 sm:px-7"
               >
                 <p
-                  className="
-                    mb-4
-                    text-[10px]
-                    font-bold
-                    uppercase
-                    tracking-[0.12em]
-                    text-slate-400
-                  "
+                  className="mb-4 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400"
                 >
                   People involved
                 </p>
 
                 <div
-                  className="
-                    grid
-                    gap-3
-                    sm:grid-cols-2
-                  "
+                  className="grid gap-3 sm:grid-cols-2"
                 >
                   {/* Reporter */}
 
                   <div
-                    className="
-                      border
-                      border-slate-200
-                      p-3
-                    "
+                    className="border border-slate-200 p-3 rounded-xl"
                   >
                     <div
-                      className="
-                        flex
-                        items-center
-                        justify-between
-                        gap-2
-                      "
+                      className="flex items-center justify-between gap-2"
                     >
                       <p
-                        className="
-                          text-[9px]
-                          font-semibold
-                          uppercase
-                          tracking-wide
-                          text-slate-400
-                        "
+                        className="text-[11px] font-semibold uppercase tracking-wide text-slate-400"
                       >
                         Reported by
                       </p>
@@ -2674,12 +2181,7 @@ export default function ReportsTable({
                     </div>
 
                     <div
-                      className="
-                        mt-3
-                        flex
-                        items-start
-                        gap-2.5
-                      "
+                      className="mt-3 flex items-start gap-2.5"
                     >
                       <div
                         className={`
@@ -2718,18 +2220,10 @@ export default function ReportsTable({
                       </div>
 
                       <div
-                        className="
-                          min-w-0
-                          flex-1
-                        "
+                        className="min-w-0 flex-1"
                       >
                         <p
-                          className="
-                            truncate
-                            text-xs
-                            font-semibold
-                            text-slate-800
-                          "
+                          className="truncate text-xs font-semibold text-slate-800"
                         >
                           {reporterName(
                             selectedReport,
@@ -2740,12 +2234,7 @@ export default function ReportsTable({
                           selectedReport,
                         ) && (
                           <p
-                            className="
-                              mt-0.5
-                              truncate
-                              text-[9px]
-                              text-slate-400
-                            "
+                            className="mt-0.5 truncate text-[11px] text-slate-400"
                           >
                             {reporterSecondaryText(
                               selectedReport,
@@ -2763,14 +2252,7 @@ export default function ReportsTable({
                           href={`/admin/users?q=${encodeURIComponent(
                             selectedReport.reporter_id,
                           )}`}
-                          className="
-                            mt-3
-                            inline-block
-                            text-[10px]
-                            font-semibold
-                            text-[#A92F56]
-                            hover:text-[#72213A]
-                          "
+                          className="mt-3 inline-block text-[11px] font-semibold text-[#A92F56] hover:text-[#72213A]"
                         >
                           View user
                         </Link>
@@ -2779,32 +2261,15 @@ export default function ReportsTable({
                     {selectedReport.reporter_source ===
                       "admin" && (
                       <div
-                        className="
-                          mt-3
-                          flex
-                          items-center
-                          gap-1.5
-                          border
-                          border-[#FDC1C9]
-                          bg-[#FDC1C9]/10
-                          px-2.5
-                          py-2
-                        "
+                        className="mt-3 flex items-center gap-1.5 border border-[#FDC1C9] bg-[#FDC1C9]/10 px-2.5 py-2"
                       >
                         <ShieldCheck
                           size={12}
-                          className="
-                            shrink-0
-                            text-[#A92F56]
-                          "
+                          className="shrink-0 text-[#A92F56]"
                         />
 
                         <p
-                          className="
-                            text-[9px]
-                            leading-4
-                            text-[#72213A]
-                          "
+                          className="text-[11px] leading-4 text-[#72213A]"
                         >
                           This report was
                           created by an
@@ -2816,32 +2281,15 @@ export default function ReportsTable({
                     {selectedReport.reporter_source ===
                       "system" && (
                       <div
-                        className="
-                          mt-3
-                          flex
-                          items-center
-                          gap-1.5
-                          border
-                          border-violet-200
-                          bg-violet-50
-                          px-2.5
-                          py-2
-                        "
+                        className="mt-3 flex items-center gap-1.5 border border-violet-200 bg-violet-50 px-2.5 py-2"
                       >
                         <Bot
                           size={12}
-                          className="
-                            shrink-0
-                            text-violet-600
-                          "
+                          className="shrink-0 text-violet-600"
                         />
 
                         <p
-                          className="
-                            text-[9px]
-                            leading-4
-                            text-violet-700
-                          "
+                          className="text-[11px] leading-4 text-violet-700"
                         >
                           Generated by
                           automated content
@@ -2854,32 +2302,16 @@ export default function ReportsTable({
                   {/* Reported user */}
 
                   <div
-                    className="
-                      border
-                      border-slate-200
-                      p-3
-                    "
+                    className="border border-slate-200 p-3 rounded-xl"
                   >
                     <p
-                      className="
-                        text-[9px]
-                        font-semibold
-                        uppercase
-                        tracking-wide
-                        text-slate-400
-                      "
+                      className="text-[11px] font-semibold uppercase tracking-wide text-slate-400"
                     >
                       Reported user
                     </p>
 
                     <p
-                      className="
-                        mt-2
-                        truncate
-                        text-xs
-                        font-semibold
-                        text-slate-800
-                      "
+                      className="mt-2 truncate text-xs font-semibold text-slate-800"
                     >
                       {selectedReport.reported_user
                         ? personName(
@@ -2894,12 +2326,7 @@ export default function ReportsTable({
                       .reported_user
                       ?.username && (
                       <p
-                        className="
-                          mt-0.5
-                          truncate
-                          text-[9px]
-                          text-slate-400
-                        "
+                        className="mt-0.5 truncate text-[11px] text-slate-400"
                       >
                         @
                         {
@@ -2917,12 +2344,7 @@ export default function ReportsTable({
                         .reported_user
                         ?.email && (
                         <p
-                          className="
-                            mt-0.5
-                            truncate
-                            text-[9px]
-                            text-slate-400
-                          "
+                          className="mt-0.5 truncate text-[11px] text-slate-400"
                         >
                           {
                             selectedReport
@@ -2938,14 +2360,7 @@ export default function ReportsTable({
                         href={`/admin/users?q=${encodeURIComponent(
                           selectedReport.reported_user_id,
                         )}`}
-                        className="
-                          mt-2
-                          inline-block
-                          text-[10px]
-                          font-semibold
-                          text-[#A92F56]
-                          hover:text-[#72213A]
-                        "
+                        className="mt-2 inline-block text-[11px] font-semibold text-[#A92F56] hover:text-[#72213A]"
                       >
                         View user
                       </Link>
@@ -2958,24 +2373,7 @@ export default function ReportsTable({
                         onClick={
                           openBanModal
                         }
-                        className="
-                          mt-3
-                          flex
-                          h-9
-                          w-full
-                          items-center
-                          justify-center
-                          gap-2
-                          border
-                          border-red-200
-                          bg-red-50
-                          px-3
-                          text-[10px]
-                          font-semibold
-                          text-red-700
-                          transition
-                          hover:bg-red-100
-                        "
+                        className="mt-3 flex h-9 w-full items-center justify-center gap-2 border border-red-200 bg-red-50 px-3 text-[11px] font-semibold text-red-700 transition hover:bg-red-100"
                       >
                         <Ban
                           size={13}
@@ -2990,33 +2388,17 @@ export default function ReportsTable({
                 {selectedReport
                   .reported_user_id && (
                   <div
-                    className="
-                      mt-3
-                      flex
-                      items-center
-                      justify-between
-                      border
-                      border-slate-200
-                      px-3
-                      py-2.5
-                    "
+                    className="mt-3 flex items-center justify-between border border-slate-200 px-3 py-2.5"
                   >
                     <span
-                      className="
-                        text-xs
-                        text-slate-500
-                      "
+                      className="text-xs text-slate-500"
                     >
                       Reports involving
                       this user
                     </span>
 
                     <span
-                      className="
-                        text-xs
-                        font-semibold
-                        text-slate-900
-                      "
+                      className="text-xs font-semibold text-slate-900"
                     >
                       {
                         selectedReport.previous_reports_count
@@ -3029,56 +2411,28 @@ export default function ReportsTable({
               {/* Review metadata */}
 
               <div
-                className="
-                  border-b
-                  border-slate-100
-                  px-5
-                  py-5
-                "
+                className="border-b border-slate-100 px-5 py-5 sm:px-7"
               >
                 <p
-                  className="
-                    mb-4
-                    text-[10px]
-                    font-bold
-                    uppercase
-                    tracking-[0.12em]
-                    text-slate-400
-                  "
+                  className="mb-4 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400"
                 >
                   Review
                 </p>
 
                 <div
-                  className="
-                    space-y-3
-                  "
+                  className="space-y-3"
                 >
                   <div
-                    className="
-                      flex
-                      items-center
-                      justify-between
-                      gap-4
-                    "
+                    className="flex items-center justify-between gap-4"
                   >
                     <span
-                      className="
-                        text-xs
-                        text-slate-500
-                      "
+                      className="text-xs text-slate-500"
                     >
                       Assigned admin
                     </span>
 
                     <span
-                      className="
-                        max-w-[230px]
-                        truncate
-                        text-xs
-                        font-medium
-                        text-slate-700
-                      "
+                      className="max-w-[230px] truncate text-xs font-medium text-slate-700"
                     >
                       {selectedReport.assigned_admin
                         ?.full_name ||
@@ -3089,28 +2443,16 @@ export default function ReportsTable({
                   </div>
 
                   <div
-                    className="
-                      flex
-                      items-center
-                      justify-between
-                      gap-4
-                    "
+                    className="flex items-center justify-between gap-4"
                   >
                     <span
-                      className="
-                        text-xs
-                        text-slate-500
-                      "
+                      className="text-xs text-slate-500"
                     >
                       Last reviewed
                     </span>
 
                     <span
-                      className="
-                        text-xs
-                        font-medium
-                        text-slate-700
-                      "
+                      className="text-xs font-medium text-slate-700"
                     >
                       {formatDateTime(
                         selectedReport.reviewed_at,
@@ -3125,30 +2467,16 @@ export default function ReportsTable({
               ================================================= */}
 
               <div
-                className="
-                  px-5
-                  py-5
-                "
+                className="px-5 py-5 sm:px-7"
               >
                 <p
-                  className="
-                    text-[10px]
-                    font-bold
-                    uppercase
-                    tracking-[0.12em]
-                    text-slate-400
-                  "
+                  className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400"
                 >
                   Moderation action
                 </p>
 
                 <p
-                  className="
-                    mt-2
-                    text-xs
-                    leading-5
-                    text-slate-500
-                  "
+                  className="mt-2 text-xs leading-5 text-slate-500"
                 >
                   Update the report
                   workflow after reviewing
@@ -3197,12 +2525,7 @@ export default function ReportsTable({
                 )}
 
                 <div
-                  className="
-                    mt-4
-                    grid
-                    gap-2
-                    sm:grid-cols-3
-                  "
+                  className="mt-4 grid gap-2 sm:grid-cols-3"
                 >
                   <button
                     type="button"
@@ -3215,24 +2538,7 @@ export default function ReportsTable({
                         "reviewing",
                       )
                     }
-                    className="
-                      inline-flex
-                      h-10
-                      items-center
-                      justify-center
-                      gap-2
-                      border
-                      border-blue-200
-                      bg-blue-50
-                      px-3
-                      text-[11px]
-                      font-semibold
-                      text-blue-700
-                      transition
-                      hover:bg-blue-100
-                      disabled:cursor-not-allowed
-                      disabled:opacity-40
-                    "
+                    className="inline-flex h-10 items-center justify-center gap-2 border border-blue-200 bg-blue-50 px-3 text-[11px] font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40 rounded-xl"
                   >
                     <CircleDot
                       size={13}
@@ -3252,24 +2558,7 @@ export default function ReportsTable({
                         "resolved",
                       )
                     }
-                    className="
-                      inline-flex
-                      h-10
-                      items-center
-                      justify-center
-                      gap-2
-                      border
-                      border-emerald-200
-                      bg-emerald-50
-                      px-3
-                      text-[11px]
-                      font-semibold
-                      text-emerald-700
-                      transition
-                      hover:bg-emerald-100
-                      disabled:cursor-not-allowed
-                      disabled:opacity-40
-                    "
+                    className="inline-flex h-10 items-center justify-center gap-2 border border-emerald-200 bg-emerald-50 px-3 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-40 rounded-xl"
                   >
                     <CheckCircle2
                       size={13}
@@ -3289,24 +2578,7 @@ export default function ReportsTable({
                         "dismissed",
                       )
                     }
-                    className="
-                      inline-flex
-                      h-10
-                      items-center
-                      justify-center
-                      gap-2
-                      border
-                      border-slate-200
-                      bg-white
-                      px-3
-                      text-[11px]
-                      font-semibold
-                      text-slate-600
-                      transition
-                      hover:bg-slate-50
-                      disabled:cursor-not-allowed
-                      disabled:opacity-40
-                    "
+                    className="inline-flex h-10 items-center justify-center gap-2 border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 rounded-xl"
                   >
                     <XCircle
                       size={13}
@@ -3318,31 +2590,15 @@ export default function ReportsTable({
 
                 {!reportIsOpen && (
                   <div
-                    className="
-                      mt-4
-                      flex
-                      gap-3
-                      border
-                      border-slate-200
-                      bg-slate-50
-                      p-3
-                    "
+                    className="mt-4 flex gap-3 border border-slate-200 bg-slate-50 p-3 rounded-xl"
                   >
                     <CheckCircle2
                       size={15}
-                      className="
-                        mt-0.5
-                        shrink-0
-                        text-slate-500
-                      "
+                      className="mt-0.5 shrink-0 text-slate-500"
                     />
 
                     <p
-                      className="
-                        text-[10px]
-                        leading-5
-                        text-slate-600
-                      "
+                      className="text-[11px] leading-5 text-slate-600"
                     >
                       This moderation
                       case is closed.
@@ -3355,31 +2611,15 @@ export default function ReportsTable({
                 )}
 
                 <div
-                  className="
-                    mt-4
-                    flex
-                    gap-3
-                    border
-                    border-amber-200
-                    bg-amber-50
-                    p-3
-                  "
+                  className="mt-4 flex gap-3 border border-amber-200 bg-amber-50 p-3 rounded-xl"
                 >
                   <AlertTriangle
                     size={15}
-                    className="
-                      mt-0.5
-                      shrink-0
-                      text-amber-600
-                    "
+                    className="mt-0.5 shrink-0 text-amber-600"
                   />
 
                   <p
-                    className="
-                      text-[10px]
-                      leading-5
-                      text-amber-700
-                    "
+                    className="text-[11px] leading-5 text-amber-700"
                   >
                     Bans are recorded
                     separately from
